@@ -501,7 +501,111 @@ Mock / fallback：
   - 修复 OAuth API route 使用 Next `Link` 导致的额外 OPTIONS 请求。
   - 将 `next lint` 迁移到 ESLint flat config，避免交互式初始化导致 CI 失败。
 
-## 17. 提交与复现检查清单
+## 17. 附录 - 工程交付参考
+
+### 总体架构
+
+AI Arcade 采用前后端一体的 Next.js App Router 作为 Web/API 层，PostgreSQL 保存业务元数据，Redis + BullMQ 承担异步生成任务队列，Agent package 承载自研 Orchestrator，MinIO 作为 S3-compatible 对象存储交付上传素材和生成游戏产物。
+
+协作流程如下：
+
+1. 前端 Create 页面提交 prompt 和可选素材，API 写入 `GenerationJob`，并把任务推入 BullMQ。
+2. Worker 消费任务，调用 Agent Orchestrator 依次执行 Intent、GameDesign、CodeGen、SafetyReview、BuildPackager、Publish。
+3. 上传素材先落 MinIO，素材摘要写入数据库，Agent 只读取受控摘要和对象 URL，不直接信任用户文件内容。
+4. 生成产物以静态 `index.html`、`game.js`、`style.css`、`manifest.json`、`cover.svg` 写入 MinIO。
+5. Home/API 从数据库读取 published 游戏；Play 页面先取 manifest，再将远端 `entryUrl` 注入 sandbox iframe。
+6. 运行时隔离依赖 iframe sandbox、生成文件 CSP、安全扫描和远端静态文件协议，Web 主应用不直接执行生成代码。
+
+### 数据模型
+
+核心模型覆盖用户、游戏、版本、素材、任务和日志：
+
+- `User`：账号主体，包含 email、username、passwordHash、avatarUrl，并关联 session、OAuth account、游戏、任务、素材和互动行为。
+- `Account` / `Session`：支持 credentials、GitHub、Google 登录；OAuth token 加密保存，session 使用 httpOnly cookie。
+- `Game`：游戏业务实体，包含作者、标题、简介、封面、tags、发布状态、当前版本、游玩/点赞/收藏计数和发布时间。
+- `GameVersion`：不可变产物版本，记录 versionNumber、manifestUrl、artifactBaseUrl、entryFile、storagePrefix、manifestJson 和 buildStatus。
+- `Asset`：用户上传素材，记录 bucket/objectKey/publicUrl/sha256/mime/size 和 `analysis` 摘要，可关联 generation job。
+- `GenerationJob`：异步生成任务，记录 prompt、inputAssets、status、currentStep、progress、errorMessage、costEstimated、gameId、startedAt/finishedAt。
+- `AgentLog`：每个 Agent step 的输入摘要、输出摘要、rawJson、状态、错误和耗时证据。
+- `PlayEvent` / `Like` / `Favorite`：记录运行时加载事件、游玩行为和用户互动状态。
+
+发布状态由 `Game.status`、`publishedAt` 和 `currentVersionId` 共同表达：draft 可预览，published 才进入 Home/API 展示；版本 rollback 通过切换 `currentVersionId` 完成，不删除历史版本。
+
+### Agent 编排
+
+当前实现使用自研 TypeScript 状态机，而不是直接引入 OpenClaw、Hermes、Pi Agent 或 LangGraph。原因是本次 MVP 的状态流固定、步骤少、需要强审计和可控失败语义，自研状态机更容易把数据库事务、AgentLog、错误恢复和 artifact 协议绑定清楚。
+
+拆分方式：
+
+- `IntentPlannerAgent`：把 prompt 和素材摘要转换为玩法意图、控制方式、实体、胜负条件和 seed。
+- `GameDesignAgent`：把意图转换为标题、简介、tags、视觉主题、玩法循环、评分和运行要求。
+- `CodeGenAgent`：调用 OpenAI-compatible 模型生成原创 `index.html`、`game.js`、`style.css`，传入素材摘要和再生成上下文，并对 JSON、CSP、源码长度、玩法循环、输入、HUD、胜负和安全扫描做质量门槛；失败时最多 repair 两轮。
+- `SafetyReviewAgent`：静态扫描 HTML/CSS/JS，拦截 CSP 缺失、外部资源、inline script/style、eval、storage、cookie、网络、worker、无限循环和危险浏览器 API。
+- `BuildPackagerAgent`：计算文件 hash，生成 manifest、cover 和待上传文件列表。
+- `PublishAgent`：上传到 MinIO，创建/更新 Game、GameVersion，并保持版本关系。
+
+未来如果流程扩展到分支、多模型评审或并行 Agent，可以把每个 step 映射到 LangGraph 节点；当前版本优先保持可读、可测和少依赖。
+
+### 远端产物协议
+
+生成游戏以静态 bundle 交付到 `game-artifacts` bucket：
+
+```text
+games/{gameId}/v{version}/
+  index.html
+  game.js
+  style.css
+  cover.svg
+  manifest.json
+```
+
+`manifest.json` 是 Play 页唯一信任入口，包含：
+
+- `schemaVersion`、`gameId`、`version`、`title`、`description`、`runtime`。
+- `entry` 和每个文件的 `path`、`url`、`contentType`、`sha256`。
+- `artifactBaseUrl` 推导出的远端静态入口。
+- `permissions`，当前声明 network/storage 关闭，parentMessaging 只用于受控 telemetry。
+
+Play 页面不加载数据库里的源码文本，而是请求 `/api/games/{gameId}/manifest`，再用 manifest 的 `entryUrl` 打开 iframe。这样版本、hash、对象存储路径和运行时入口可以独立验证。
+
+### 安全隔离
+
+安全策略按输入、生成、执行和密钥四层处理：
+
+- 上传素材：限制大小和类型，写入 MinIO，记录 sha256；DocMind 或本地解析只产出摘要，Agent 使用摘要而不是直接执行素材。
+- Prompt Injection：素材和 prompt 作为数据传给 Agent；系统提示明确禁止外部资源、网络、storage、cookie、eval、Function、worker、top/parent 访问等能力。
+- 生成代码执行：生成代码不进入主应用 bundle，只作为远端静态文件在 iframe 中运行；iframe 使用 `sandbox="allow-scripts"`、`no-referrer` 和 feature policy deny-list。
+- CSP：生成的 `index.html` 必须包含 `default-src 'none'`、`script-src 'self'`、`style-src 'self'`、`connect-src 'none'`、`base-uri 'none'`、`form-action 'none'`、`object-src 'none'`。
+- 静态安全扫描：SafetyReview 对字符串规则和 TypeScript AST 做双层检查，拦截危险 API、外部资源、无界循环和高频 timer。
+- 密钥保护：真实模型、OAuth、DocMind、S3 凭据只通过环境变量注入；`.env` 被 `.gitignore` 排除，README 和 `.env.example` 不包含真实密钥。
+- 资源限制：MVP 依赖 iframe 隔离、CSP、静态扫描和文件长度限制；生产建议补独立 sandbox origin、HTTP 级 CSP、CPU/内存/运行时长配额和滥用监控。
+
+### 失败恢复
+
+失败恢复围绕任务状态、AgentLog 和不可变版本实现：
+
+- 模型未配置：fallback 关闭且缺少 `OPENAI_API_KEY` / `DASHSCOPE_API_KEY` 时，任务直接 failed，并给出“未配置真实模型，不能执行 AI 原创生成”。
+- 模型输出不稳定：CodeGen 对 JSON、文件字段、CSP、输入控制、HUD、胜负条件、源码长度和安全扫描做检查；失败原因会反馈给模型 repair，最多两轮。
+- Intent/GameDesign JSON 不合法：当前任务标记 failed，BullMQ 可按队列 attempts 重试，AgentLog 保留失败步骤。
+- 构建失败：BuildPackager 不写入 GameVersion；任务保留 errorMessage，可从 Create 历史 retry/remix。
+- 上传失败：PublishAgent 失败时任务 failed，不切换 `currentVersionId`，已存在版本不受影响。
+- 发布失败：draft artifact 仍可保留供作者预览；再次发布只更新 `Game.status` 和 `publishedAt`。
+- 加载失败：Play 页面记录 load start/success/failed telemetry，并在 Runtime proof 区域展示 manifest/entry/artifactBaseUrl 和加载状态，便于定位对象存储、manifest 或 iframe 问题。
+- 版本回退：每次成功生成写入新的 `GameVersion`；rollback 只切换当前版本，不删除历史产物。
+
+### 可观测性
+
+系统保留从用户操作到远端运行的证据链：
+
+- `GenerationJob` 记录任务状态、进度、当前步骤、错误、成本估算和起止时间。
+- `AgentLog` 记录每个 Agent 的 inputSummary、outputSummary、rawJson、status、errorMessage、startedAt/finishedAt。
+- Worker 控制台记录队列任务 completed/failed，Docker Compose 可直接查看 web/worker/postgres/redis/minio 日志。
+- Play 页面展示 Runtime proof：manifestUrl、entryUrl、artifactBaseUrl、iframe load 状态。
+- `PlayEvent` 持久化 `play_start`、iframe load success/failed 等运行事件。
+- E2E 会输出截图到 `test-results/screenshots/`，包括 auth、home、details、play、create-published 和社交详情页；真实 DashScope smoke 也可保留本地截图证据。
+- Git 提交按功能分段，README 记录复现命令、环境变量和远端仓库地址，方便评审复查。
+
+## 18. 提交与复现检查清单
 
 ```bash
 git log --oneline --decorate --max-count=8
