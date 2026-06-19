@@ -37,9 +37,14 @@ function normalizeInputAssets(inputAssets: unknown) {
     );
 }
 
-export default async function CreatePage() {
+type CreatePageProps = {
+  searchParams?: Promise<{ jobId?: string }>;
+};
+
+export default async function CreatePage({ searchParams }: CreatePageProps) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  const activeJobId = (await searchParams)?.jobId;
 
   const jobs = await db.generationJob.findMany({
     where: { userId: user.id },
@@ -61,5 +66,7 @@ export default async function CreatePage() {
     assets: normalizeInputAssets(job.inputAssets),
   }));
 
-  return <CreateClient initialJobs={initialJobs} />;
+  return (
+    <CreateClient initialJobs={initialJobs} initialActiveJobId={activeJobId} />
+  );
 }

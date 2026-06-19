@@ -79,6 +79,7 @@ type JobHistoryItem = {
 
 type CreateClientProps = {
   initialJobs?: JobHistoryItem[];
+  initialActiveJobId?: string;
 };
 
 const starterPrompt =
@@ -95,11 +96,51 @@ function formatCost(value: number | null | undefined) {
   return `$${value.toFixed(4)}`;
 }
 
-export function CreateClient({ initialJobs = [] }: CreateClientProps) {
+function jobStateFromHistory(item: JobHistoryItem): JobState {
+  return {
+    jobId: item.id,
+    status: item.status,
+    progress: item.progress,
+    currentStep: item.currentStep,
+    errorMessage: item.errorMessage,
+    gameId: item.gameId,
+    manifestUrl: null,
+    artifactBaseUrl: null,
+    costEstimated: item.costEstimated,
+    createdAt: item.createdAt,
+    finishedAt: item.finishedAt,
+  };
+}
+
+export function CreateClient({
+  initialJobs = [],
+  initialActiveJobId,
+}: CreateClientProps) {
+  const initialActiveJob = initialActiveJobId
+    ? initialJobs.find((item) => item.id === initialActiveJobId)
+    : undefined;
+  const fallbackActiveJob: JobState | null =
+    initialActiveJobId && !initialActiveJob
+      ? {
+          jobId: initialActiveJobId,
+          status: "pending",
+          progress: 0,
+          currentStep: "queued",
+          errorMessage: null,
+          gameId: null,
+          manifestUrl: null,
+          artifactBaseUrl: null,
+          costEstimated: null,
+        }
+      : null;
   const [prompt, setPrompt] = useState(starterPrompt);
   const [files, setFiles] = useState<File[]>([]);
   const [assets, setAssets] = useState<UploadedAsset[]>([]);
-  const [job, setJob] = useState<JobState | null>(null);
+  const [job, setJob] = useState<JobState | null>(
+    initialActiveJob
+      ? jobStateFromHistory(initialActiveJob)
+      : fallbackActiveJob,
+  );
   const [logs, setLogs] = useState<AgentLog[]>([]);
   const [history, setHistory] = useState<JobHistoryItem[]>(initialJobs);
   const [loading, setLoading] = useState(false);

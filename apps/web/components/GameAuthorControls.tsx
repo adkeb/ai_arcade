@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Loader2, RotateCcw, Save } from "lucide-react";
+import { Loader2, RefreshCw, RotateCcw, Save } from "lucide-react";
 import type { ApiResponse } from "@ai-arcade/shared";
 
 type VersionSummary = {
@@ -11,6 +11,10 @@ type VersionSummary = {
   buildStatus: string;
   createdAt: string;
   storagePrefix: string;
+  comparedToVersion: number | null;
+  addedFiles: string[];
+  changedFiles: string[];
+  removedFiles: string[];
 };
 
 type GameAuthorControlsProps = {
@@ -48,6 +52,9 @@ export function GameAuthorControls({
   const [titleValue, setTitleValue] = useState(title);
   const [descriptionValue, setDescriptionValue] = useState(description);
   const [tagsValue, setTagsValue] = useState(tags.join(", "));
+  const [regeneratePrompt, setRegeneratePrompt] = useState(
+    `Create a stronger new version of ${title}: ${description}`,
+  );
   const [pendingAction, setPendingAction] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -96,6 +103,29 @@ export function GameAuthorControls({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Version restore failed.");
     } finally {
+      setPendingAction("");
+    }
+  }
+
+  async function regenerateVersion() {
+    setPendingAction("regenerate");
+    setError("");
+    setMessage("");
+    try {
+      const result = await readApi<{
+        jobId: string;
+        status: string;
+        currentStep: string | null;
+      }>(
+        await fetch(`/api/games/${gameId}/regenerate`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ prompt: regeneratePrompt }),
+        }),
+      );
+      router.push(`/create?jobId=${encodeURIComponent(result.jobId)}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Regeneration failed.");
       setPendingAction("");
     }
   }
@@ -151,6 +181,31 @@ export function GameAuthorControls({
 
       <div className="space-y-2 border-t border-slate-100 pt-4">
         <h3 className="text-sm font-black uppercase text-slate-500">
+          Regenerate version
+        </h3>
+        <textarea
+          aria-label="Regenerate prompt"
+          className="min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-950 outline-none focus:border-teal-500"
+          value={regeneratePrompt}
+          onChange={(event) => setRegeneratePrompt(event.target.value)}
+        />
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+          disabled={Boolean(pendingAction)}
+          onClick={regenerateVersion}
+        >
+          {pendingAction === "regenerate" ? (
+            <Loader2 className="animate-spin" size={14} aria-hidden="true" />
+          ) : (
+            <RefreshCw size={14} aria-hidden="true" />
+          )}
+          Regenerate
+        </button>
+      </div>
+
+      <div className="space-y-2 border-t border-slate-100 pt-4">
+        <h3 className="text-sm font-black uppercase text-slate-500">
           Version rollback
         </h3>
         {versions.map((version) => {
@@ -177,6 +232,30 @@ export function GameAuthorControls({
               <p className="mt-2 break-all font-mono text-[11px] leading-4 text-slate-600">
                 {version.storagePrefix}
               </p>
+              <div className="mt-2 space-y-1 rounded-md bg-white px-2 py-2 text-[11px] leading-4 text-slate-600">
+                <p className="font-bold text-slate-700">
+                  {version.comparedToVersion
+                    ? `Compared with v${version.comparedToVersion}`
+                    : "Baseline version"}
+                </p>
+                {version.addedFiles.length ||
+                version.changedFiles.length ||
+                version.removedFiles.length ? (
+                  <>
+                    {version.addedFiles.length ? (
+                      <p>Added: {version.addedFiles.join(", ")}</p>
+                    ) : null}
+                    {version.changedFiles.length ? (
+                      <p>Changed: {version.changedFiles.join(", ")}</p>
+                    ) : null}
+                    {version.removedFiles.length ? (
+                      <p>Removed: {version.removedFiles.join(", ")}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p>No file hash changes.</p>
+                )}
+              </div>
               <button
                 type="button"
                 className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400"

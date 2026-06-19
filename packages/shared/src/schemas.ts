@@ -48,3 +48,7 @@ export const updateGameSchema = z.object({
     .max(8)
     .transform((tags) => Array.from(new Set(tags))),
 });
+
+export const regenerateGameSchema = z.object({
+  prompt: z.string().trim().min(10).max(2000),
+});

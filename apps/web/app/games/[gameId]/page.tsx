@@ -17,6 +17,96 @@ type PageProps = {
   params: Promise<{ gameId: string }>;
 };
 
+type VersionWithManifest = {
+  id: string;
+  versionNumber: number;
+  buildStatus: string;
+  createdAt: Date;
+  storagePrefix: string;
+  manifestJson: unknown;
+};
+
+function manifestHashes(manifestJson: unknown): Map<string, string> {
+  if (!manifestJson || typeof manifestJson !== "object") return new Map();
+  const manifest = manifestJson as {
+    files?: Array<{ path?: unknown; sha256?: unknown }>;
+    assets?: Array<{ path?: unknown; sha256?: unknown }>;
+  };
+  const entries = [...(manifest.files ?? []), ...(manifest.assets ?? [])];
+  return new Map(
+    entries
+      .filter(
+        (entry) =>
+          typeof entry.path === "string" && typeof entry.sha256 === "string",
+      )
+      .map((entry) => [entry.path as string, entry.sha256 as string]),
+  );
+}
+
+function compareVersionFiles(
+  current: VersionWithManifest,
+  previous: VersionWithManifest | undefined,
+) {
+  const currentFiles = manifestHashes(current.manifestJson);
+  if (!previous) {
+    return {
+      comparedToVersion: null,
+      addedFiles: Array.from(currentFiles.keys()).sort(),
+      changedFiles: [],
+      removedFiles: [],
+    };
+  }
+
+  const previousFiles = manifestHashes(previous.manifestJson);
+  const addedFiles = Array.from(currentFiles.keys())
+    .filter((path) => !previousFiles.has(path))
+    .sort();
+  const changedFiles = Array.from(currentFiles.entries())
+    .filter(
+      ([path, hash]) =>
+        previousFiles.get(path) !== undefined &&
+        previousFiles.get(path) !== hash,
+    )
+    .map(([path]) => path)
+    .sort();
+  const removedFiles = Array.from(previousFiles.keys())
+    .filter((path) => !currentFiles.has(path))
+    .sort();
+
+  return {
+    comparedToVersion: previous.versionNumber,
+    addedFiles,
+    changedFiles,
+    removedFiles,
+  };
+}
+
+function buildVersionSummaries(versions: VersionWithManifest[]) {
+  const ascending = [...versions].sort(
+    (left, right) => left.versionNumber - right.versionNumber,
+  );
+  const comparisons = new Map(
+    ascending.map((version, index) => [
+      version.id,
+      compareVersionFiles(version, ascending[index - 1]),
+    ]),
+  );
+
+  return versions.map((version) => ({
+    id: version.id,
+    versionNumber: version.versionNumber,
+    buildStatus: version.buildStatus,
+    createdAt: version.createdAt.toISOString(),
+    storagePrefix: version.storagePrefix,
+    ...(comparisons.get(version.id) ?? {
+      comparedToVersion: null,
+      addedFiles: [],
+      changedFiles: [],
+      removedFiles: [],
+    }),
+  }));
+}
+
 export default async function GameDetailPage({ params }: PageProps) {
   const { gameId } = await params;
   const user = await getCurrentUser();
@@ -37,6 +127,7 @@ export default async function GameDetailPage({ params }: PageProps) {
 
   const isAuthor = Boolean(user && game?.authorId === user.id);
   if (!game || (game.status !== "published" && !isAuthor)) notFound();
+  const versionSummaries = buildVersionSummaries(game.versions);
   const likedByCurrentUser = "likes" in game ? game.likes.length > 0 : false;
   const favoritedByCurrentUser =
     "favorites" in game ? game.favorites.length > 0 : false;
@@ -118,13 +209,7 @@ export default async function GameDetailPage({ params }: PageProps) {
             description={game.description}
             tags={game.tags}
             currentVersionId={game.currentVersionId}
-            versions={game.versions.map((version) => ({
-              id: version.id,
-              versionNumber: version.versionNumber,
-              buildStatus: version.buildStatus,
-              createdAt: version.createdAt.toISOString(),
-              storagePrefix: version.storagePrefix,
-            }))}
+            versions={versionSummaries}
           />
         ) : null}
 
@@ -151,7 +236,7 @@ export default async function GameDetailPage({ params }: PageProps) {
               Versions
             </h2>
             <div className="space-y-2">
-              {game.versions.map((version) => (
+              {versionSummaries.map((version) => (
                 <article
                   key={version.id}
                   className="rounded-lg border border-slate-200 bg-slate-50 p-3"
@@ -170,6 +255,27 @@ export default async function GameDetailPage({ params }: PageProps) {
                   <p className="mt-2 break-all font-mono text-[11px] leading-4 text-slate-600">
                     {version.storagePrefix}
                   </p>
+                  <div className="mt-2 rounded-md bg-white px-2 py-2 text-[11px] leading-4 text-slate-600">
+                    <p className="font-bold text-slate-700">
+                      {version.comparedToVersion
+                        ? `Compared with v${version.comparedToVersion}`
+                        : "Baseline version"}
+                    </p>
+                    {version.addedFiles.length ||
+                    version.changedFiles.length ||
+                    version.removedFiles.length ? (
+                      <p className="mt-1">
+                        {[...version.addedFiles, ...version.changedFiles]
+                          .slice(0, 4)
+                          .join(", ")}
+                        {version.removedFiles.length
+                          ? `; removed ${version.removedFiles.join(", ")}`
+                          : ""}
+                      </p>
+                    ) : (
+                      <p className="mt-1">No file hash changes.</p>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>

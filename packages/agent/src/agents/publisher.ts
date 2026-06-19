@@ -14,25 +14,45 @@ export async function runPublishAgent(params: {
   for (const file of params.artifact.files) {
     await putObject({
       bucket: params.artifact.bucket,
-      key: objectKeyForArtifact(params.artifact.gameId, params.artifact.version, file.path),
+      key: objectKeyForArtifact(
+        params.artifact.gameId,
+        params.artifact.version,
+        file.path,
+      ),
       body: file.body,
-      contentType: file.contentType
+      contentType: file.contentType,
     });
   }
 
   const result = await db.$transaction(async (tx) => {
-    const game = await tx.game.create({
-      data: {
-        id: params.artifact.gameId,
-        authorId: params.userId,
-        title: params.artifact.title,
-        description: params.artifact.description,
-        coverUrl: params.artifact.coverUrl,
-        tags: params.artifact.tags,
-        status: params.status ?? "draft",
-        publishedAt: params.status === "published" ? new Date() : null
-      }
+    const existingGame = await tx.game.findUnique({
+      where: { id: params.artifact.gameId },
+      select: {
+        id: true,
+        authorId: true,
+        status: true,
+        publishedAt: true,
+      },
     });
+
+    if (existingGame && existingGame.authorId !== params.userId) {
+      throw new Error("Only the author can publish a new version.");
+    }
+
+    const game =
+      existingGame ??
+      (await tx.game.create({
+        data: {
+          id: params.artifact.gameId,
+          authorId: params.userId,
+          title: params.artifact.title,
+          description: params.artifact.description,
+          coverUrl: params.artifact.coverUrl,
+          tags: params.artifact.tags,
+          status: params.status ?? "draft",
+          publishedAt: params.status === "published" ? new Date() : null,
+        },
+      }));
 
     const version = await tx.gameVersion.create({
       data: {
@@ -44,14 +64,21 @@ export async function runPublishAgent(params: {
         entryFile: "index.html",
         storageBucket: params.artifact.bucket,
         storagePrefix: params.artifact.prefix,
-        manifestJson: params.artifact.manifest as unknown as Prisma.InputJsonValue,
-        buildStatus: "succeeded"
-      }
+        manifestJson: params.artifact
+          .manifest as unknown as Prisma.InputJsonValue,
+        buildStatus: "succeeded",
+      },
     });
 
     await tx.game.update({
       where: { id: game.id },
-      data: { currentVersionId: version.id }
+      data: {
+        title: params.artifact.title,
+        description: params.artifact.description,
+        coverUrl: params.artifact.coverUrl,
+        tags: params.artifact.tags,
+        currentVersionId: version.id,
+      },
     });
 
     if (params.jobId) {
@@ -62,8 +89,8 @@ export async function runPublishAgent(params: {
           status: "succeeded",
           currentStep: "PublishAgent",
           progress: 100,
-          finishedAt: new Date()
-        }
+          finishedAt: new Date(),
+        },
       });
     }
 
@@ -74,6 +101,6 @@ export async function runPublishAgent(params: {
     gameId: result.gameId,
     versionId: result.versionId,
     manifestUrl: params.artifact.manifestUrl,
-    artifactBaseUrl: params.artifact.artifactBaseUrl
+    artifactBaseUrl: params.artifact.artifactBaseUrl,
   };
 }

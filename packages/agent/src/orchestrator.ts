@@ -170,6 +170,15 @@ async function loadJobContext(jobId: string) {
   return job;
 }
 
+async function nextVersionForGame(gameId: string | null): Promise<number> {
+  if (!gameId) return 1;
+  const latest = await db.gameVersion.aggregate({
+    where: { gameId },
+    _max: { versionNumber: true },
+  });
+  return (latest._max.versionNumber ?? 0) + 1;
+}
+
 export async function runGenerationJob(
   jobId: string,
 ): Promise<PublishedArtifact> {
@@ -188,6 +197,7 @@ export async function runGenerationJob(
   try {
     const job = await loadJobContext(jobId);
     const assets = readAssetsFromJob(job);
+    const artifactVersion = await nextVersionForGame(job.gameId);
 
     const intent = await runLoggedStep({
       jobId,
@@ -248,6 +258,8 @@ export async function runGenerationJob(
           design,
           files: safety.files,
           jobId,
+          gameId: job.gameId ?? undefined,
+          version: artifactVersion,
         }),
     });
 
