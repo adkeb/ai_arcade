@@ -1,4 +1,11 @@
-import type { AssetSummary, GameDesignSpec, GameSourceFiles, IntentPlan } from "./types";
+import type {
+  AssetSummary,
+  GameDesignSpec,
+  GameSourceFiles,
+  IntentPlan,
+} from "./types";
+
+type LocalGameMode = NonNullable<IntentPlan["mode"]>;
 
 function hashText(text: string): number {
   let hash = 2166136261;
@@ -18,77 +25,328 @@ function pick<T>(items: T[], seed: number): T {
   return items[seed % items.length] as T;
 }
 
-export function planIntentFromPrompt(prompt: string, assets: AssetSummary[]): IntentPlan {
-  const seed = hashText(`${prompt}:${assets.map((asset) => asset.originalName).join("|")}`);
-  const isSpace = hasAny(prompt, ["space", "ship", "asteroid", "太空", "飞船", "陨石", "能量"]);
-  const isCyber = hasAny(prompt, ["cyber", "neon", "赛博", "霓虹"]);
-  const isGarden = hasAny(prompt, ["garden", "flower", "memory", "花园", "记忆"]);
-  const isRunner = hasAny(prompt, ["runner", "run", "跑酷", "奔跑"]);
-  const isPuzzle = hasAny(prompt, ["puzzle", "match", "解谜", "配对"]);
+function inferGameMode(prompt: string): LocalGameMode {
+  const isMemory = hasAny(prompt, [
+    "memory",
+    "match",
+    "matching",
+    "pair",
+    "card",
+    "记忆",
+    "配对",
+    "匹配",
+    "翻牌",
+    "卡牌",
+  ]);
+  const isGarden = hasAny(prompt, [
+    "garden",
+    "flower",
+    "bloom",
+    "seed",
+    "花园",
+    "花",
+    "种植",
+    "园艺",
+  ]);
+  const isRunner = hasAny(prompt, [
+    "runner",
+    "run",
+    "dash",
+    "parkour",
+    "side-scroller",
+    "跑酷",
+    "奔跑",
+    "横版",
+  ]);
+  const isPuzzle = hasAny(prompt, [
+    "puzzle",
+    "logic",
+    "sequence",
+    "pattern",
+    "解谜",
+    "谜题",
+    "序列",
+    "规律",
+  ]);
 
-  const genre = isPuzzle ? "memory puzzle" : isRunner ? "arcade runner" : "avoid-and-collect arcade";
+  if (isMemory) return "memory-match";
+  if (isGarden) return "garden-sequence";
+  if (isPuzzle) return "memory-match";
+  if (isRunner) return "runner";
+  return "avoid-collect";
+}
+
+function modeFromIntent(intent: IntentPlan): LocalGameMode {
+  if (intent.mode) return intent.mode;
+  const genre = intent.genre.toLowerCase();
+  if (
+    genre.includes("memory") ||
+    genre.includes("match") ||
+    genre.includes("puzzle")
+  )
+    return "memory-match";
+  if (
+    genre.includes("garden") ||
+    genre.includes("sequence") ||
+    genre.includes("pattern")
+  )
+    return "garden-sequence";
+  if (genre.includes("runner") || genre.includes("dash")) return "runner";
+  return "avoid-collect";
+}
+
+export function planIntentFromPrompt(
+  prompt: string,
+  assets: AssetSummary[],
+): IntentPlan {
+  const seed = hashText(
+    `${prompt}:${assets.map((asset) => asset.originalName).join("|")}`,
+  );
+  const mode = inferGameMode(prompt);
+  const isSpace = hasAny(prompt, [
+    "space",
+    "ship",
+    "asteroid",
+    "太空",
+    "飞船",
+    "陨石",
+    "能量",
+  ]);
+  const isCyber = hasAny(prompt, ["cyber", "neon", "赛博", "霓虹"]);
+  const isGarden = hasAny(prompt, [
+    "garden",
+    "flower",
+    "bloom",
+    "seed",
+    "花园",
+    "花",
+    "种植",
+    "园艺",
+  ]);
+
+  const genre =
+    mode === "memory-match"
+      ? "memory matching puzzle"
+      : mode === "garden-sequence"
+        ? "garden sequence puzzle"
+        : mode === "runner"
+          ? "side-scrolling arcade runner"
+          : "avoid-and-collect arcade";
   const artStyle = isCyber
     ? "neon cyberpunk"
     : isGarden
       ? "soft botanical pixel art"
       : isSpace
         ? "pixel space opera"
-        : pick(["crisp arcade pixel art", "paper-cut toy world", "retro synth arcade"], seed);
+        : pick(
+            [
+              "crisp arcade pixel art",
+              "paper-cut toy world",
+              "retro synth arcade",
+            ],
+            seed,
+          );
 
   const entities = isGarden
-    ? ["player sprite", "memory blooms", "shadow thorns"]
-    : isSpace
-      ? ["pilot ship", "asteroids", "energy cores"]
-      : ["player avatar", "hazards", "score orbs"];
+    ? ["garden keeper", "memory blooms", "pattern beds"]
+    : mode === "memory-match"
+      ? ["card cursor", "matching tiles", "memory symbols"]
+      : mode === "runner"
+        ? ["runner avatar", "barriers", "spark tokens"]
+        : isSpace
+          ? ["pilot ship", "asteroids", "energy cores"]
+          : ["player avatar", "hazards", "score orbs"];
 
-  return {
-    genre,
-    coreMechanics: [
+  const mechanicsByMode: Record<LocalGameMode, string[]> = {
+    "avoid-collect": [
       "move within a bounded canvas",
       "avoid fast hazards",
       "collect score items",
-      assets.length > 0 ? "reference uploaded material as visual inspiration" : "procedurally vary colors from prompt"
+      assets.length > 0
+        ? "reference uploaded material as visual inspiration"
+        : "procedurally vary colors from prompt",
     ],
+    "memory-match": [
+      "flip hidden cards on a grid",
+      "remember symbol positions",
+      "match every pair before time expires",
+      assets.length > 0
+        ? "reference uploaded material as card motif inspiration"
+        : "seed card symbols from prompt",
+    ],
+    runner: [
+      "jump through a side-scrolling lane",
+      "time jumps around barriers",
+      "collect airborne tokens for bonus score",
+      assets.length > 0
+        ? "reference uploaded material as runner scenery inspiration"
+        : "vary obstacle cadence from prompt",
+    ],
+    "garden-sequence": [
+      "watch a highlighted garden pattern",
+      "repeat the bloom sequence by clicking beds",
+      "grow longer sequences across rounds",
+      assets.length > 0
+        ? "reference uploaded material as planting motif inspiration"
+        : "seed bloom order from prompt",
+    ],
+  };
+
+  const goalsByMode: Record<
+    LocalGameMode,
+    Pick<
+      IntentPlan,
+      "playerGoal" | "winCondition" | "loseCondition" | "controls"
+    >
+  > = {
+    "avoid-collect": {
+      playerGoal:
+        "survive the full timer while collecting as many rewards as possible",
+      winCondition: "timer reaches zero with at least one life remaining",
+      loseCondition: "all lives are lost before the timer ends",
+      controls: ["Arrow keys", "WASD", "mouse or touch drag"],
+    },
+    "memory-match": {
+      playerGoal: "reveal and match all hidden pairs before the timer expires",
+      winCondition: "all pairs are matched",
+      loseCondition: "timer expires or too many mismatches remove all lives",
+      controls: ["mouse or touch tap"],
+    },
+    runner: {
+      playerGoal:
+        "jump over barriers, collect tokens, and keep running until the timer ends",
+      winCondition: "timer reaches zero while the runner still has lives",
+      loseCondition: "all lives are lost to collisions",
+      controls: ["Space", "ArrowUp", "W", "mouse or touch tap"],
+    },
+    "garden-sequence": {
+      playerGoal:
+        "memorize each bloom pattern and repeat it to grow the garden",
+      winCondition: "complete the target bloom sequence length",
+      loseCondition: "all lives are lost after incorrect pattern inputs",
+      controls: ["mouse or touch tap", "number keys 1-4"],
+    },
+  };
+
+  return {
+    genre,
+    mode,
+    coreMechanics: mechanicsByMode[mode],
     artStyle,
-    playerGoal: "survive the full timer while collecting as many rewards as possible",
-    winCondition: "timer reaches zero with at least one life remaining",
-    loseCondition: "all lives are lost before the timer ends",
-    controls: ["Arrow keys", "WASD", "mouse or touch drag"],
+    playerGoal: goalsByMode[mode].playerGoal,
+    winCondition: goalsByMode[mode].winCondition,
+    loseCondition: goalsByMode[mode].loseCondition,
+    controls: goalsByMode[mode].controls,
     entities,
-    mood: isCyber ? "electric and tense" : isGarden ? "calm but tricky" : "fast and playful",
-    seed
+    mood: isCyber
+      ? "electric and tense"
+      : isGarden
+        ? "calm and focused"
+        : mode === "memory-match"
+          ? "clever and deliberate"
+          : "fast and playful",
+    seed,
   };
 }
 
-export function designGameFromIntent(prompt: string, intent: IntentPlan): GameDesignSpec {
-  const titlePool =
-    intent.artStyle.includes("space")
+export function designGameFromIntent(
+  prompt: string,
+  intent: IntentPlan,
+): GameDesignSpec {
+  const mode = modeFromIntent(intent);
+  const titlePoolByMode: Record<LocalGameMode, string[]> = {
+    "avoid-collect": intent.artStyle.includes("space")
       ? ["Asteroid Energy Run", "Orbit Spark Dash", "Cosmic Core Drift"]
-      : intent.artStyle.includes("botanical")
-        ? ["Memory Garden", "Bloom Signal", "Petal Path"]
-        : intent.artStyle.includes("cyber")
-          ? ["Neon Drift", "Circuit Rush", "Chrome Pulse"]
-          : ["Pixel Runner", "Arcade Spark", "Signal Sprint"];
+      : intent.artStyle.includes("cyber")
+        ? ["Neon Drift", "Circuit Rush", "Chrome Pulse"]
+        : ["Pixel Runner", "Arcade Spark", "Signal Sprint"],
+    "memory-match": intent.artStyle.includes("botanical")
+      ? ["Memory Garden", "Bloom Recall", "Petal Pairs"]
+      : intent.artStyle.includes("cyber")
+        ? ["Neon Memory Grid", "Circuit Pairs", "Chrome Recall"]
+        : ["Signal Match", "Tile Recall", "Pattern Pairs"],
+    runner: intent.artStyle.includes("space")
+      ? ["Orbit Runner", "Asteroid Lane", "Comet Sprint"]
+      : intent.artStyle.includes("cyber")
+        ? ["Circuit Rush", "Neon Vault", "Chrome Runner"]
+        : ["Pixel Vault", "Dashline", "Spark Runner"],
+    "garden-sequence": ["Bloom Signal", "Petal Pattern", "Garden Echo"],
+  };
 
-  const title = pick(titlePool, intent.seed);
-  const difficulty = intent.seed % 5 === 0 ? "hard" : intent.seed % 2 === 0 ? "medium" : "easy";
-  const durationSeconds = hasAny(prompt, ["30", "三十", "half minute"]) ? 30 : difficulty === "hard" ? 45 : 35;
+  const title = pick(titlePoolByMode[mode], intent.seed);
+  const difficulty =
+    intent.seed % 5 === 0 ? "hard" : intent.seed % 2 === 0 ? "medium" : "easy";
+  const durationSeconds = hasAny(prompt, ["30", "三十", "half minute"])
+    ? 30
+    : mode === "memory-match"
+      ? 60
+      : mode === "garden-sequence"
+        ? 55
+        : difficulty === "hard"
+          ? 45
+          : 35;
   const palette = intent.artStyle.includes("cyber")
-    ? { background: "#17151f", primary: "#18d6c5", accent: "#ffd166", danger: "#ff5c8a" }
+    ? {
+        background: "#17151f",
+        primary: "#18d6c5",
+        accent: "#ffd166",
+        danger: "#ff5c8a",
+      }
     : intent.artStyle.includes("botanical")
-      ? { background: "#18231f", primary: "#9be564", accent: "#f6d365", danger: "#f25f5c" }
+      ? {
+          background: "#18231f",
+          primary: "#9be564",
+          accent: "#f6d365",
+          danger: "#f25f5c",
+        }
       : intent.artStyle.includes("space")
-        ? { background: "#101827", primary: "#7dd3fc", accent: "#facc15", danger: "#fb7185" }
-        : { background: "#16181d", primary: "#70e000", accent: "#fbbf24", danger: "#f97316" };
+        ? {
+            background: "#101827",
+            primary: "#7dd3fc",
+            accent: "#facc15",
+            danger: "#fb7185",
+          }
+        : {
+            background: "#16181d",
+            primary: "#70e000",
+            accent: "#fbbf24",
+            danger: "#f97316",
+          };
 
   const tags = Array.from(
     new Set([
-      intent.genre.split(" ")[0] ?? "arcade",
-      intent.artStyle.includes("cyber") ? "cyberpunk" : intent.artStyle.includes("space") ? "space" : "pixel",
+      mode,
+      intent.artStyle.includes("cyber")
+        ? "cyberpunk"
+        : intent.artStyle.includes("space")
+          ? "space"
+          : "pixel",
       difficulty,
-      "agent-generated"
-    ])
+      "agent-generated",
+    ]),
   );
+
+  const loopByMode: Record<LocalGameMode, string> = {
+    "avoid-collect":
+      "Start the round, move through incoming hazards, collect glowing rewards, and finish with a score summary.",
+    "memory-match":
+      "Reveal two cards at a time, memorize the hidden symbols, match every pair, and protect your remaining lives.",
+    runner:
+      "Start running, jump over side-scrolling barriers, grab airborne tokens, and survive until the timer ends.",
+    "garden-sequence":
+      "Watch the highlighted bloom order, repeat the pattern on the garden beds, and grow longer sequences each round.",
+  };
+
+  const scoringByMode: Record<LocalGameMode, string> = {
+    "avoid-collect":
+      "Rewards add points, survival time adds a bonus, collisions remove lives.",
+    "memory-match":
+      "Matched pairs add points, quick matches earn a bonus, wrong pairs remove lives.",
+    runner:
+      "Distance and tokens add points, collisions remove lives, remaining lives add a finish bonus.",
+    "garden-sequence":
+      "Correct pattern steps add points, completed rounds add bonuses, wrong inputs remove lives.",
+  };
 
   return {
     title,
@@ -97,14 +355,18 @@ export function designGameFromIntent(prompt: string, intent: IntentPlan): GameDe
     }`,
     tags,
     coverPrompt: `${intent.artStyle} cover for ${title}, ${intent.entities.join(", ")}`,
-    gameplayLoop:
-      "Start the round, move the player through incoming hazards, collect glowing rewards, and finish with a score summary.",
+    gameplayLoop: loopByMode[mode],
     controls: intent.controls,
-    scoring: "Rewards add points, survival time adds a bonus, collisions remove lives.",
+    scoring: scoringByMode[mode],
     difficulty,
-    runtimeRequirements: ["HTML5 Canvas", "keyboard input", "pointer input", "postMessage telemetry"],
+    runtimeRequirements: [
+      "HTML5 Canvas",
+      "keyboard input",
+      "pointer input",
+      "postMessage telemetry",
+    ],
     theme: palette,
-    durationSeconds
+    durationSeconds,
   };
 }
 
@@ -115,7 +377,7 @@ function escapeHtml(value: string): string {
       "<": "&lt;",
       ">": "&gt;",
       '"': "&quot;",
-      "'": "&#39;"
+      "'": "&#39;",
     };
     return map[char] ?? char;
   });
@@ -123,7 +385,7 @@ function escapeHtml(value: string): string {
 
 export function generateCoverSvg(design: GameDesignSpec): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-label="${escapeHtml(
-    design.title
+    design.title,
   )}">
   <rect width="960" height="540" fill="${design.theme.background}"/>
   <g opacity="0.92">
@@ -134,28 +396,38 @@ export function generateCoverSvg(design: GameDesignSpec): string {
   </g>
   <rect x="56" y="344" width="848" height="124" rx="18" fill="rgba(0,0,0,0.42)"/>
   <text x="84" y="398" fill="#fff" font-family="Arial, sans-serif" font-size="54" font-weight="700">${escapeHtml(
-    design.title
+    design.title,
   )}</text>
   <text x="86" y="438" fill="#f8fafc" font-family="Arial, sans-serif" font-size="24">${escapeHtml(
-    design.tags.slice(0, 3).join(" / ")
+    design.tags.slice(0, 3).join(" / "),
   )}</text>
 </svg>`;
 }
 
-export function generateGameFiles(design: GameDesignSpec, intent: IntentPlan): GameSourceFiles {
+export function generateGameFiles(
+  design: GameDesignSpec,
+  intent: IntentPlan,
+): GameSourceFiles {
+  const mode = modeFromIntent(intent);
   const config = {
     title: design.title,
     description: design.description,
+    mode,
     duration: design.durationSeconds,
     difficulty: design.difficulty,
     theme: design.theme,
     labels: {
       player: intent.entities[0] ?? "player",
       hazard: intent.entities[1] ?? "hazard",
-      pickup: intent.entities[2] ?? "reward"
+      pickup: intent.entities[2] ?? "reward",
     },
     seed: intent.seed,
-    speedMultiplier: design.difficulty === "hard" ? 1.3 : design.difficulty === "medium" ? 1.1 : 0.92
+    speedMultiplier:
+      design.difficulty === "hard"
+        ? 1.3
+        : design.difficulty === "medium"
+          ? 1.1
+          : 0.92,
   };
 
   const indexHtml = `<!doctype html>
@@ -323,6 +595,7 @@ button {
 
   const gameJs = `(() => {
   const config = ${JSON.stringify(config)};
+  const baseSeed = config.seed;
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
   const scoreEl = document.getElementById("score");
@@ -342,9 +615,24 @@ button {
     lastTime: 0,
     nextHazard: 0,
     nextPickup: 0,
+    nextObstacle: 0,
+    nextToken: 0,
     hazards: [],
     pickups: [],
-    player: { x: 148, y: 270, radius: 18 }
+    obstacles: [],
+    tokens: [],
+    cards: [],
+    selectedCards: [],
+    lockTimer: 0,
+    sequence: [],
+    sequenceInput: 0,
+    sequenceTarget: 6,
+    showingSequence: false,
+    showIndex: -1,
+    showTimer: 0,
+    activePlot: -1,
+    player: { x: 148, y: 270, radius: 18 },
+    runner: { x: 150, y: 386, width: 38, height: 50, vy: 0, grounded: true }
   };
 
   function seededRandom() {
@@ -352,8 +640,8 @@ button {
     return config.seed / 4294967296;
   }
 
-  function emit(type, payload = {}) {
-    parent.postMessage({ source: "ai-arcade-game", type, payload }, "*");
+  function emit(type, payload) {
+    parent.postMessage({ source: "ai-arcade-game", type, payload: payload || {} }, "*");
   }
 
   function resize() {
@@ -368,33 +656,116 @@ button {
     }
   }
 
+  function pointFromEvent(event) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height
+    };
+  }
+
+  function updateHud() {
+    const remaining = Math.max(0, Math.ceil(config.duration - state.elapsed));
+    scoreEl.textContent = String(Math.max(0, Math.floor(state.score)));
+    livesEl.textContent = String(Math.max(0, state.lives));
+    timeEl.textContent = String(remaining);
+  }
+
+  function endGame(reason) {
+    if (!state.running) return;
+    state.running = false;
+    state.over = true;
+    overlay.hidden = false;
+    restartBtn.hidden = false;
+    startBtn.hidden = true;
+    updateHud();
+    statusEl.textContent = reason + " Final score: " + Math.max(0, Math.floor(state.score)) + ".";
+    emit("game_over", { reason, score: Math.max(0, Math.floor(state.score)), lives: state.lives });
+  }
+
+  function setupMemoryMatch() {
+    const pairCount = config.difficulty === "hard" ? 8 : config.difficulty === "medium" ? 6 : 5;
+    const values = "ABCDEFGH".slice(0, pairCount).split("");
+    const deck = values.concat(values);
+    for (let index = deck.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(seededRandom() * (index + 1));
+      const value = deck[index];
+      deck[index] = deck[swapIndex];
+      deck[swapIndex] = value;
+    }
+    const columns = 4;
+    const cardWidth = 142;
+    const cardHeight = 86;
+    const gap = 16;
+    const rows = Math.ceil(deck.length / columns);
+    const startX = (canvas.width - columns * cardWidth - (columns - 1) * gap) / 2;
+    const startY = (canvas.height - rows * cardHeight - (rows - 1) * gap) / 2 + 18;
+    state.cards = deck.map((value, index) => ({
+      id: index,
+      value,
+      x: startX + (index % columns) * (cardWidth + gap),
+      y: startY + Math.floor(index / columns) * (cardHeight + gap),
+      width: cardWidth,
+      height: cardHeight,
+      flipped: false,
+      matched: false
+    }));
+    state.selectedCards = [];
+    state.lockTimer = 0;
+    statusEl.textContent = "Flip two cards, remember symbols, and match every pair.";
+  }
+
+  function startSequenceDisplay() {
+    state.showingSequence = true;
+    state.showIndex = -1;
+    state.showTimer = 0.25;
+    state.sequenceInput = 0;
+    state.activePlot = -1;
+    statusEl.textContent = "Watch the bloom order.";
+  }
+
+  function setupGardenSequence() {
+    state.sequence = [Math.floor(seededRandom() * 4), Math.floor(seededRandom() * 4)];
+    state.sequenceTarget = config.difficulty === "hard" ? 8 : config.difficulty === "medium" ? 7 : 6;
+    startSequenceDisplay();
+  }
+
+  function setupRunner() {
+    state.runner = { x: 150, y: 386, width: 38, height: 50, vy: 0, grounded: true };
+    state.obstacles = [];
+    state.tokens = [];
+    state.nextObstacle = 0.4;
+    state.nextToken = 0.9;
+    statusEl.textContent = "Jump with Space, ArrowUp, W, or tap. Collect tokens and avoid barriers.";
+  }
+
+  function setupAvoidCollect() {
+    state.player = { x: 148, y: 270, radius: 18 };
+    state.hazards = [];
+    state.pickups = [];
+    state.nextHazard = 0;
+    state.nextPickup = 0.4;
+    statusEl.textContent = "Collect " + config.labels.pickup + " and dodge " + config.labels.hazard + ".";
+  }
+
   function reset() {
+    config.seed = baseSeed;
     state.running = true;
     state.over = false;
     state.score = 0;
     state.lives = 3;
     state.elapsed = 0;
     state.lastTime = performance.now();
-    state.nextHazard = 0;
-    state.nextPickup = 0;
-    state.hazards = [];
-    state.pickups = [];
-    state.player = { x: 148, y: 270, radius: 18 };
     overlay.hidden = true;
     restartBtn.hidden = true;
-    statusEl.textContent = "Collect " + config.labels.pickup + " and dodge " + config.labels.hazard + ".";
-    emit("play_start", { title: config.title });
+    startBtn.hidden = false;
+    if (config.mode === "memory-match") setupMemoryMatch();
+    else if (config.mode === "garden-sequence") setupGardenSequence();
+    else if (config.mode === "runner") setupRunner();
+    else setupAvoidCollect();
+    updateHud();
+    emit("play_start", { title: config.title, mode: config.mode });
     requestAnimationFrame(loop);
-  }
-
-  function endGame(reason) {
-    state.running = false;
-    state.over = true;
-    overlay.hidden = false;
-    restartBtn.hidden = false;
-    startBtn.hidden = true;
-    statusEl.textContent = reason + " Final score: " + state.score + ".";
-    emit("game_over", { reason, score: state.score, lives: state.lives });
   }
 
   function spawnHazard() {
@@ -418,7 +789,7 @@ button {
     });
   }
 
-  function update(dt) {
+  function updateAvoidCollect(dt) {
     state.elapsed += dt;
     state.nextHazard -= dt;
     state.nextPickup -= dt;
@@ -442,10 +813,7 @@ button {
       hazard.x -= hazard.speed * dt;
       hazard.y += Math.sin(state.elapsed * 4 + hazard.wobble) * 20 * dt;
     }
-    for (const pickup of state.pickups) {
-      pickup.x -= pickup.speed * dt;
-    }
-
+    for (const pickup of state.pickups) pickup.x -= pickup.speed * dt;
     state.hazards = state.hazards.filter((hazard) => hazard.x > -hazard.radius);
     state.pickups = state.pickups.filter((pickup) => pickup.x > -pickup.radius);
 
@@ -463,17 +831,176 @@ button {
       }
     }
     state.pickups = state.pickups.filter((pickup) => pickup.x > -100);
-
-    const remaining = Math.max(0, Math.ceil(config.duration - state.elapsed));
-    scoreEl.textContent = String(state.score + Math.floor(state.elapsed));
-    livesEl.textContent = String(state.lives);
-    timeEl.textContent = String(remaining);
-
+    state.score += dt * 2;
+    updateHud();
     if (state.lives <= 0) endGame("All lives lost.");
-    if (state.elapsed >= config.duration) {
+    else if (state.elapsed >= config.duration) {
       state.score += state.lives * 50;
       endGame("Timer complete.");
     }
+  }
+
+  function updateMemoryMatch(dt) {
+    state.elapsed += dt;
+    if (state.lockTimer > 0) {
+      state.lockTimer -= dt;
+      if (state.lockTimer <= 0) {
+        for (const card of state.selectedCards) card.flipped = false;
+        state.selectedCards = [];
+      }
+    }
+    updateHud();
+    if (state.elapsed >= config.duration) endGame("Time expired.");
+  }
+
+  function jumpRunner() {
+    if (!state.running || config.mode !== "runner" || !state.runner.grounded) return;
+    state.runner.vy = -610;
+    state.runner.grounded = false;
+  }
+
+  function spawnRunnerObstacle() {
+    const height = 34 + Math.floor(seededRandom() * 44);
+    state.obstacles.push({
+      x: canvas.width + 20,
+      y: 436 - height,
+      width: 28 + Math.floor(seededRandom() * 28),
+      height,
+      speed: (225 + seededRandom() * 100) * config.speedMultiplier
+    });
+  }
+
+  function spawnRunnerToken() {
+    state.tokens.push({
+      x: canvas.width + 24,
+      y: 245 + seededRandom() * 130,
+      radius: 12,
+      speed: (220 + seededRandom() * 90) * config.speedMultiplier
+    });
+  }
+
+  function updateRunner(dt) {
+    state.elapsed += dt;
+    state.score += dt * 7;
+    state.nextObstacle -= dt;
+    state.nextToken -= dt;
+    if (state.nextObstacle <= 0) {
+      spawnRunnerObstacle();
+      state.nextObstacle = Math.max(0.72, 1.35 - state.elapsed / 85) + seededRandom() * 0.35;
+    }
+    if (state.nextToken <= 0) {
+      spawnRunnerToken();
+      state.nextToken = 0.95 + seededRandom() * 0.85;
+    }
+
+    const runner = state.runner;
+    runner.vy += 1320 * dt;
+    runner.y += runner.vy * dt;
+    if (runner.y + runner.height >= 436) {
+      runner.y = 436 - runner.height;
+      runner.vy = 0;
+      runner.grounded = true;
+    }
+
+    for (const obstacle of state.obstacles) obstacle.x -= obstacle.speed * dt;
+    for (const token of state.tokens) token.x -= token.speed * dt;
+    state.obstacles = state.obstacles.filter((obstacle) => obstacle.x + obstacle.width > -10);
+    state.tokens = state.tokens.filter((token) => token.x + token.radius > -10);
+
+    for (const obstacle of state.obstacles) {
+      const hit = runner.x < obstacle.x + obstacle.width && runner.x + runner.width > obstacle.x && runner.y < obstacle.y + obstacle.height && runner.y + runner.height > obstacle.y;
+      if (hit) {
+        obstacle.x = -999;
+        state.lives -= 1;
+        state.score = Math.max(0, state.score - 25);
+      }
+    }
+    for (const token of state.tokens) {
+      const closestX = Math.max(runner.x, Math.min(token.x, runner.x + runner.width));
+      const closestY = Math.max(runner.y, Math.min(token.y, runner.y + runner.height));
+      if (Math.hypot(token.x - closestX, token.y - closestY) < token.radius) {
+        token.x = -999;
+        state.score += 20;
+      }
+    }
+    state.tokens = state.tokens.filter((token) => token.x > -100);
+    updateHud();
+    if (state.lives <= 0) endGame("All lives lost.");
+    else if (state.elapsed >= config.duration) {
+      state.score += state.lives * 60;
+      endGame("Finish line reached.");
+    }
+  }
+
+  function gardenPlots() {
+    return [
+      { x: 260, y: 185, radius: 70 },
+      { x: 700, y: 185, radius: 70 },
+      { x: 260, y: 380, radius: 70 },
+      { x: 700, y: 380, radius: 70 }
+    ];
+  }
+
+  function handleGardenPlot(index) {
+    if (!state.running || config.mode !== "garden-sequence" || state.showingSequence) return;
+    state.activePlot = index;
+    if (state.sequence[state.sequenceInput] === index) {
+      state.score += 12;
+      state.sequenceInput += 1;
+      if (state.sequenceInput >= state.sequence.length) {
+        state.score += state.sequence.length * 28;
+        if (state.sequence.length >= state.sequenceTarget) {
+          endGame("Garden complete.");
+          return;
+        }
+        state.sequence.push(Math.floor(seededRandom() * 4));
+        startSequenceDisplay();
+      } else {
+        statusEl.textContent = "Correct. Continue the pattern.";
+      }
+    } else {
+      state.lives -= 1;
+      state.sequenceInput = 0;
+      statusEl.textContent = "Pattern reset. Watch again.";
+      if (state.lives <= 0) {
+        endGame("All lives lost.");
+        return;
+      }
+      startSequenceDisplay();
+    }
+    updateHud();
+  }
+
+  function updateGardenSequence(dt) {
+    state.elapsed += dt;
+    if (state.showingSequence) {
+      state.showTimer -= dt;
+      if (state.showTimer <= 0) {
+        if (state.activePlot >= 0) {
+          state.activePlot = -1;
+          state.showTimer = 0.18;
+        } else {
+          state.showIndex += 1;
+          if (state.showIndex >= state.sequence.length) {
+            state.showingSequence = false;
+            state.sequenceInput = 0;
+            statusEl.textContent = "Repeat the bloom order.";
+          } else {
+            state.activePlot = state.sequence[state.showIndex];
+            state.showTimer = 0.54;
+          }
+        }
+      }
+    }
+    updateHud();
+    if (state.elapsed >= config.duration) endGame("Time expired.");
+  }
+
+  function update(dt) {
+    if (config.mode === "memory-match") updateMemoryMatch(dt);
+    else if (config.mode === "garden-sequence") updateGardenSequence(dt);
+    else if (config.mode === "runner") updateRunner(dt);
+    else updateAvoidCollect(dt);
   }
 
   function drawBackground() {
@@ -482,18 +1009,17 @@ button {
     gradient.addColorStop(1, "#020617");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalAlpha = 0.28;
+    ctx.globalAlpha = 0.24;
     ctx.fillStyle = config.theme.primary;
-    for (let i = 0; i < 40; i += 1) {
-      const x = (i * 97 + config.seed) % canvas.width;
-      const y = (i * 53 + config.seed / 3) % canvas.height;
+    for (let i = 0; i < 44; i += 1) {
+      const x = (i * 97 + baseSeed) % canvas.width;
+      const y = (i * 53 + baseSeed / 3) % canvas.height;
       ctx.fillRect(x, y, 2, 2);
     }
     ctx.globalAlpha = 1;
   }
 
-  function draw() {
-    drawBackground();
+  function drawAvoidCollect() {
     ctx.fillStyle = config.theme.primary;
     ctx.beginPath();
     ctx.arc(state.player.x, state.player.y, state.player.radius, 0, Math.PI * 2);
@@ -506,7 +1032,6 @@ button {
     ctx.lineTo(state.player.x - 14, state.player.y + 14);
     ctx.closePath();
     ctx.fill();
-
     ctx.fillStyle = config.theme.danger;
     for (const hazard of state.hazards) {
       ctx.beginPath();
@@ -515,13 +1040,75 @@ button {
       ctx.strokeStyle = "rgba(255,255,255,0.45)";
       ctx.stroke();
     }
-
     ctx.fillStyle = config.theme.accent;
     for (const pickup of state.pickups) {
       ctx.beginPath();
       ctx.arc(pickup.x, pickup.y, pickup.radius, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  function drawMemoryMatch() {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const card of state.cards) {
+      const open = card.flipped || card.matched;
+      ctx.fillStyle = open ? config.theme.accent : "rgba(255,255,255,0.1)";
+      ctx.strokeStyle = card.matched ? config.theme.primary : "rgba(255,255,255,0.32)";
+      ctx.lineWidth = card.matched ? 5 : 2;
+      ctx.fillRect(card.x, card.y, card.width, card.height);
+      ctx.strokeRect(card.x, card.y, card.width, card.height);
+      ctx.fillStyle = open ? "#06111c" : "rgba(255,255,255,0.74)";
+      ctx.font = open ? "700 38px Arial" : "700 18px Arial";
+      ctx.fillText(open ? card.value : "?", card.x + card.width / 2, card.y + card.height / 2);
+    }
+  }
+
+  function drawRunner() {
+    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    ctx.fillRect(0, 436, canvas.width, 4);
+    ctx.fillStyle = config.theme.primary;
+    ctx.fillRect(state.runner.x, state.runner.y, state.runner.width, state.runner.height);
+    ctx.fillStyle = config.theme.accent;
+    ctx.fillRect(state.runner.x + state.runner.width - 8, state.runner.y + 10, 8, 14);
+    ctx.fillStyle = config.theme.danger;
+    for (const obstacle of state.obstacles) ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+    ctx.fillStyle = config.theme.accent;
+    for (const token of state.tokens) {
+      ctx.beginPath();
+      ctx.arc(token.x, token.y, token.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawGardenSequence() {
+    const plots = gardenPlots();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    plots.forEach((plot, index) => {
+      const active = index === state.activePlot;
+      ctx.fillStyle = active ? config.theme.accent : "rgba(255,255,255,0.11)";
+      ctx.strokeStyle = active ? config.theme.primary : "rgba(255,255,255,0.3)";
+      ctx.lineWidth = active ? 7 : 3;
+      ctx.beginPath();
+      ctx.arc(plot.x, plot.y, plot.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = active ? "#06111c" : "#f8fafc";
+      ctx.font = "800 36px Arial";
+      ctx.fillText(String(index + 1), plot.x, plot.y);
+    });
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = "700 18px Arial";
+    ctx.fillText("Round " + state.sequence.length + " / " + state.sequenceTarget, canvas.width / 2, 62);
+  }
+
+  function draw() {
+    drawBackground();
+    if (config.mode === "memory-match") drawMemoryMatch();
+    else if (config.mode === "garden-sequence") drawGardenSequence();
+    else if (config.mode === "runner") drawRunner();
+    else drawAvoidCollect();
   }
 
   function loop(now) {
@@ -533,21 +1120,70 @@ button {
     if (state.running) requestAnimationFrame(loop);
   }
 
-  window.addEventListener("keydown", (event) => { keys[event.code] = true; });
+  function handleMemoryTap(point) {
+    if (!state.running || config.mode !== "memory-match" || state.lockTimer > 0) return;
+    const card = state.cards.find((item) => point.x >= item.x && point.x <= item.x + item.width && point.y >= item.y && point.y <= item.y + item.height);
+    if (!card || card.flipped || card.matched) return;
+    card.flipped = true;
+    state.selectedCards.push(card);
+    if (state.selectedCards.length === 2) {
+      const first = state.selectedCards[0];
+      const second = state.selectedCards[1];
+      if (first.value === second.value) {
+        first.matched = true;
+        second.matched = true;
+        state.selectedCards = [];
+        state.score += 50;
+        if (state.cards.every((item) => item.matched)) {
+          state.score += state.lives * 75 + Math.max(0, config.duration - state.elapsed) * 3;
+          endGame("All pairs matched.");
+        }
+      } else {
+        state.lives -= 1;
+        state.score = Math.max(0, state.score - 10);
+        state.lockTimer = 0.72;
+        if (state.lives <= 0) endGame("All lives lost.");
+      }
+    }
+    updateHud();
+    draw();
+  }
+
+  canvas.addEventListener("pointerdown", (event) => {
+    const point = pointFromEvent(event);
+    if (config.mode === "memory-match") handleMemoryTap(point);
+    else if (config.mode === "garden-sequence") {
+      const plotIndex = gardenPlots().findIndex((plot) => Math.hypot(point.x - plot.x, point.y - plot.y) <= plot.radius);
+      if (plotIndex >= 0) handleGardenPlot(plotIndex);
+    } else if (config.mode === "runner") {
+      jumpRunner();
+    }
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (!state.running || config.mode !== "avoid-collect") return;
+    const point = pointFromEvent(event);
+    state.player.x = point.x;
+    state.player.y = point.y;
+  });
+
+  window.addEventListener("keydown", (event) => {
+    keys[event.code] = true;
+    if (config.mode === "runner" && (event.code === "Space" || event.code === "ArrowUp" || event.code === "KeyW")) jumpRunner();
+    if (config.mode === "garden-sequence" && event.code.startsWith("Digit")) {
+      const value = Number(event.code.slice(5));
+      if (value >= 1 && value <= 4) handleGardenPlot(value - 1);
+    }
+  });
   window.addEventListener("keyup", (event) => { keys[event.code] = false; });
   window.addEventListener("resize", resize);
-  canvas.addEventListener("pointermove", (event) => {
-    if (!state.running) return;
-    const rect = canvas.getBoundingClientRect();
-    state.player.x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-    state.player.y = ((event.clientY - rect.top) / rect.height) * canvas.height;
-  });
   startBtn.addEventListener("click", reset);
   restartBtn.addEventListener("click", () => {
-    emit("restart", { title: config.title });
+    emit("restart", { title: config.title, mode: config.mode });
     reset();
   });
   resize();
+  updateHud();
   draw();
 })();`;
 

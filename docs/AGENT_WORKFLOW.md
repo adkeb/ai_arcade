@@ -36,7 +36,7 @@ The orchestrator is a lightweight state machine in `packages/agent/src/orchestra
 
 ## Fallback vs Real LLM
 
-By default, `USE_LOCAL_AGENT_FALLBACK=true` uses deterministic prompt-based generation. It still changes title, palette, theme, entities, duration, and gameplay parameters based on the prompt and uploaded asset names.
+By default, `USE_LOCAL_AGENT_FALLBACK=true` uses deterministic prompt-based generation. It changes title, palette, theme, entities, duration, and gameplay parameters based on the prompt and uploaded asset names. It also selects distinct local gameplay templates for avoid-and-collect arcade, memory matching, side-scrolling runner, and garden sequence prompts so offline generation is not limited to one game loop.
 
 `model-provider.ts` supports OpenAI-compatible chat completions via `OPENAI_API_KEY` or `DASHSCOPE_API_KEY`, plus `OPENAI_BASE_URL` and `OPENAI_MODEL`. The default documented provider is the internal DashScope-compatible endpoint with `qwen3.7-plus` and `enable_thinking`. Production should add stricter schema validation, retry policies, cost accounting, prompt injection defenses, and a sandbox build harness before letting model-generated code ship.
 

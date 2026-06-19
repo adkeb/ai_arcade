@@ -10,6 +10,7 @@ export type AssetSummary = {
 
 export type IntentPlan = {
   genre: string;
+  mode?: "avoid-collect" | "memory-match" | "runner" | "garden-sequence";
   coreMechanics: string[];
   artStyle: string;
   playerGoal: string;
@@ -65,7 +66,12 @@ export type PackagedArtifact = {
   manifestUrl: string;
   manifest: GameManifest;
   files: Array<{
-    path: "index.html" | "game.js" | "style.css" | "manifest.json" | "cover.svg";
+    path:
+      | "index.html"
+      | "game.js"
+      | "style.css"
+      | "manifest.json"
+      | "cover.svg";
     body: string;
     contentType: string;
   }>;

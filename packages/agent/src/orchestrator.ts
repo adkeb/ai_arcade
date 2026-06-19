@@ -11,7 +11,8 @@ function summarize(value: unknown): string {
   if (typeof value === "string") return value.slice(0, 700);
   if (value && typeof value === "object") {
     const compact = JSON.stringify(value, (_key, item) => {
-      if (typeof item === "string" && item.length > 260) return `${item.slice(0, 260)}...`;
+      if (typeof item === "string" && item.length > 260)
+        return `${item.slice(0, 260)}...`;
       return item;
     });
     return compact.slice(0, 900);
@@ -22,7 +23,8 @@ function summarize(value: unknown): string {
 function rawForLog(value: unknown): Prisma.InputJsonValue | undefined {
   if (!value || typeof value !== "object") return undefined;
   const text = JSON.stringify(value, (_key, item) => {
-    if (typeof item === "string" && item.length > 1200) return `${item.slice(0, 1200)}...`;
+    if (typeof item === "string" && item.length > 1200)
+      return `${item.slice(0, 1200)}...`;
     return item;
   });
   return JSON.parse(text) as Prisma.InputJsonValue;
@@ -35,14 +37,15 @@ async function runLoggedStep<T>(params: {
   progress: number;
   inputSummary: string;
   execute: () => Promise<T>;
+  validateResult?: (result: T) => string | null;
 }): Promise<T> {
   await db.generationJob.update({
     where: { id: params.jobId },
     data: {
       status: "running",
       currentStep: params.agentName,
-      progress: params.progress
-    }
+      progress: params.progress,
+    },
   });
 
   const log = await db.agentLog.create({
@@ -52,44 +55,62 @@ async function runLoggedStep<T>(params: {
       step: params.step,
       status: "running",
       inputSummary: params.inputSummary,
-      startedAt: new Date()
-    }
+      startedAt: new Date(),
+    },
   });
 
   try {
     const result = await params.execute();
+    const resultError = params.validateResult?.(result) ?? null;
+    if (resultError) {
+      await db.agentLog.update({
+        where: { id: log.id },
+        data: {
+          status: "failed",
+          errorMessage: resultError,
+          outputSummary: summarize(result),
+          rawJson: rawForLog(result),
+          finishedAt: new Date(),
+        },
+      });
+      throw new Error(resultError);
+    }
+
     await db.agentLog.update({
       where: { id: log.id },
       data: {
         status: "succeeded",
         outputSummary: summarize(result),
         rawJson: rawForLog(result),
-        finishedAt: new Date()
-      }
+        finishedAt: new Date(),
+      },
     });
     return result;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown agent error";
+    const message =
+      error instanceof Error ? error.message : "Unknown agent error";
     await db.agentLog.update({
       where: { id: log.id },
       data: {
         status: "failed",
         errorMessage: message,
         outputSummary: message,
-        finishedAt: new Date()
-      }
+        finishedAt: new Date(),
+      },
     });
     throw error;
   }
 }
 
-function readAssetsFromJob(job: Awaited<ReturnType<typeof loadJobContext>>): AssetSummary[] {
+function readAssetsFromJob(
+  job: Awaited<ReturnType<typeof loadJobContext>>,
+): AssetSummary[] {
   const relationAssets = job.assets.map((asset) => ({
     id: asset.id,
     originalName: asset.originalName,
     mimeType: asset.mimeType,
     size: asset.size,
-    publicUrl: asset.publicUrl
+    publicUrl: asset.publicUrl,
   }));
   if (relationAssets.length > 0) return relationAssets;
 
@@ -103,7 +124,7 @@ function readAssetsFromJob(job: Awaited<ReturnType<typeof loadJobContext>>): Ass
         originalName: String(record.originalName ?? "asset"),
         mimeType: String(record.mimeType ?? "application/octet-stream"),
         size: Number(record.size ?? 0),
-        publicUrl: String(record.publicUrl ?? "")
+        publicUrl: String(record.publicUrl ?? ""),
       };
     })
     .filter((asset): asset is AssetSummary => Boolean(asset?.id));
@@ -115,10 +136,20 @@ function estimateGenerationCost(params: {
   files: { indexHtml: string; gameJs: string; styleCss: string };
 }): number {
   const promptTokens = Math.ceil(params.prompt.length / 4);
-  const assetTokens = params.assets.reduce((total, asset) => total + Math.ceil(asset.size / 2048), 0);
-  const outputTokens = Math.ceil((params.files.indexHtml.length + params.files.gameJs.length + params.files.styleCss.length) / 4);
+  const assetTokens = params.assets.reduce(
+    (total, asset) => total + Math.ceil(asset.size / 2048),
+    0,
+  );
+  const outputTokens = Math.ceil(
+    (params.files.indexHtml.length +
+      params.files.gameJs.length +
+      params.files.styleCss.length) /
+      4,
+  );
   const orchestrationOverheadTokens = 1200;
-  const estimatedUsd = (promptTokens + assetTokens + orchestrationOverheadTokens) * 0.0000006 + outputTokens * 0.0000024;
+  const estimatedUsd =
+    (promptTokens + assetTokens + orchestrationOverheadTokens) * 0.0000006 +
+    outputTokens * 0.0000024;
   return Number(Math.max(0.001, estimatedUsd).toFixed(4));
 }
 
@@ -127,15 +158,17 @@ async function loadJobContext(jobId: string) {
     where: { id: jobId },
     include: {
       user: true,
-      assets: true
-    }
+      assets: true,
+    },
   });
 
   if (!job) throw new Error(`Generation job not found: ${jobId}`);
   return job;
 }
 
-export async function runGenerationJob(jobId: string): Promise<PublishedArtifact> {
+export async function runGenerationJob(
+  jobId: string,
+): Promise<PublishedArtifact> {
   const startedAt = new Date();
   await db.generationJob.update({
     where: { id: jobId },
@@ -144,8 +177,8 @@ export async function runGenerationJob(jobId: string): Promise<PublishedArtifact
       currentStep: "createJobContext",
       progress: 3,
       startedAt,
-      errorMessage: null
-    }
+      errorMessage: null,
+    },
   });
 
   try {
@@ -158,7 +191,7 @@ export async function runGenerationJob(jobId: string): Promise<PublishedArtifact
       step: "Parse gameplay intent, theme, controls, entities, and win/loss conditions",
       progress: 12,
       inputSummary: `Prompt: ${job.prompt.slice(0, 240)}; assets: ${assets.map((asset) => asset.originalName).join(", ") || "none"}`,
-      execute: () => runIntentPlannerAgent(job.prompt, assets)
+      execute: () => runIntentPlannerAgent(job.prompt, assets),
     });
 
     const design = await runLoggedStep({
@@ -167,7 +200,7 @@ export async function runGenerationJob(jobId: string): Promise<PublishedArtifact
       step: "Convert intent into a concrete game design specification",
       progress: 28,
       inputSummary: summarize(intent),
-      execute: () => runGameDesignAgent(job.prompt, intent)
+      execute: () => runGameDesignAgent(job.prompt, intent),
     });
 
     const files = await runLoggedStep({
@@ -176,7 +209,7 @@ export async function runGenerationJob(jobId: string): Promise<PublishedArtifact
       step: "Generate dependency-free HTML5 Canvas runtime files",
       progress: 48,
       inputSummary: `${design.title}: ${design.gameplayLoop}`,
-      execute: () => runCodeGenAgent(design, intent)
+      execute: () => runCodeGenAgent(design, intent),
     });
 
     const safety = await runLoggedStep({
@@ -185,12 +218,12 @@ export async function runGenerationJob(jobId: string): Promise<PublishedArtifact
       step: "Scan generated code for blocked browser capabilities",
       progress: 64,
       inputSummary: `Files: index.html=${files.indexHtml.length}, game.js=${files.gameJs.length}, style.css=${files.styleCss.length}`,
-      execute: () => runSafetyReviewAgent(files)
+      execute: () => runSafetyReviewAgent(files),
+      validateResult: (result) =>
+        result.passed
+          ? null
+          : `Safety review failed: ${result.findings.join("; ")}`,
     });
-
-    if (!safety.passed) {
-      throw new Error(`Safety review failed: ${safety.findings.join("; ")}`);
-    }
 
     const artifact = await runLoggedStep({
       jobId,
@@ -202,8 +235,8 @@ export async function runGenerationJob(jobId: string): Promise<PublishedArtifact
         runBuildPackagerAgent({
           design,
           files: safety.files,
-          jobId
-        })
+          jobId,
+        }),
     });
 
     const published = await runLoggedStep({
@@ -217,14 +250,14 @@ export async function runGenerationJob(jobId: string): Promise<PublishedArtifact
           userId: job.userId,
           jobId,
           artifact,
-          status: "draft"
-        })
+          status: "draft",
+        }),
     });
 
     const costEstimated = estimateGenerationCost({
       prompt: job.prompt,
       assets,
-      files: safety.files
+      files: safety.files,
     });
 
     await db.generationJob.update({
@@ -235,13 +268,14 @@ export async function runGenerationJob(jobId: string): Promise<PublishedArtifact
         progress: 100,
         gameId: published.gameId,
         costEstimated,
-        finishedAt: new Date()
-      }
+        finishedAt: new Date(),
+      },
     });
 
     return published;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown generation failure";
+    const message =
+      error instanceof Error ? error.message : "Unknown generation failure";
     await db.generationJob.update({
       where: { id: jobId },
       data: {
@@ -249,8 +283,8 @@ export async function runGenerationJob(jobId: string): Promise<PublishedArtifact
         currentStep: "failed",
         progress: 100,
         errorMessage: message,
-        finishedAt: new Date()
-      }
+        finishedAt: new Date(),
+      },
     });
     throw error;
   }

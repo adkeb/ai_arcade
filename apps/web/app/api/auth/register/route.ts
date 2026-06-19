@@ -1,8 +1,12 @@
 import bcrypt from "bcryptjs";
 import { db } from "@ai-arcade/db";
 import { registerSchema } from "@ai-arcade/shared/schemas";
-import { createUserSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
-import { fail, ok, parseError } from "@/lib/api-response";
+import {
+  createUserSession,
+  SESSION_COOKIE,
+  sessionCookieOptions,
+} from "@/lib/auth";
+import { fail, ok, parseError, validationFailureFor } from "@/lib/api-response";
 
 export const runtime = "nodejs";
 
@@ -20,23 +24,43 @@ export async function POST(request: Request) {
         accounts: {
           create: {
             provider: "credentials",
-            providerAccountId: email
-          }
-        }
+            providerAccountId: email,
+          },
+        },
       },
       select: {
         id: true,
         email: true,
         username: true,
-        avatarUrl: true
-      }
+        avatarUrl: true,
+      },
     });
 
     const session = await createUserSession(user.id);
     const response = ok({ user });
-    response.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
+    response.cookies.set(
+      SESSION_COOKIE,
+      session.token,
+      sessionCookieOptions(session.expiresAt),
+    );
     return response;
   } catch (error) {
+    const validation = validationFailureFor(error, {
+      email: {
+        code: "INVALID_EMAIL",
+        message: "Please enter a valid email address.",
+      },
+      username: {
+        code: "INVALID_USERNAME",
+        message: "Username must be between 2 and 80 characters.",
+      },
+      password: {
+        code: "PASSWORD_TOO_SHORT",
+        message: "Password must be at least 8 characters.",
+      },
+    });
+    if (validation) return fail(validation.code, validation.message, 400);
+
     const message = parseError(error);
     if (message.includes("Unique constraint")) {
       return fail("EMAIL_EXISTS", "This email is already registered.", 409);

@@ -40,7 +40,7 @@ All successful responses use `{ "ok": true, "data": ... }`. Errors use `{ "ok": 
 
 - `POST /api/jobs`
   - Auth required.
-  - Request: `{ prompt: string, assetIds: string[] }`.
+  - Request: `{ prompt: string, assetIds: string[] }`; `assetIds` must contain at least one uploaded asset id.
   - Creates a `GenerationJob`, links assets, and enqueues BullMQ.
   - Response: `{ jobId, status, currentStep }`.
 

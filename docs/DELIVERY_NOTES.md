@@ -21,6 +21,14 @@
 - Seed data with two manual games and one Agent-generated published game.
 - Playwright e2e coverage with screenshot artifacts.
 
+## Post-Review Fixes
+
+- Local Agent fallback now selects separate avoid-and-collect, memory matching, runner, and garden sequence gameplay loops from prompt intent.
+- API validation failures return stable user-facing error codes/messages instead of raw Zod issue JSON.
+- SafetyReview logs are marked failed when generated code is blocked.
+- Job creation requires at least one uploaded asset, matching the Create flow requirement.
+- `.env.example` now uses the host-accessible MinIO public endpoint exposed by Docker Compose.
+
 ## Mock or Fallback
 
 - Local deterministic Agent fallback is the default.
