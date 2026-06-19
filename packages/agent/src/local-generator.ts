@@ -84,8 +84,8 @@ function inferGameMode(context: string): LocalGameMode {
     "规律",
   ]);
 
-  if (isMemory) return "memory-match";
   if (isGarden) return "garden-sequence";
+  if (isMemory) return "memory-match";
   if (isPuzzle) return "memory-match";
   if (isRunner) return "runner";
   return "avoid-collect";
@@ -95,18 +95,20 @@ function modeFromIntent(intent: IntentPlan): LocalGameMode {
   if (intent.mode) return intent.mode;
   const genre = intent.genre.toLowerCase();
   if (
-    genre.includes("memory") ||
-    genre.includes("match") ||
-    genre.includes("puzzle")
-  )
-    return "memory-match";
-  if (
     genre.includes("garden") ||
-    genre.includes("sequence") ||
-    genre.includes("pattern")
-  )
+    genre.includes("bloom") ||
+    genre.includes("flower")
+  ) {
     return "garden-sequence";
+  }
+  if (genre.includes("memory") || genre.includes("match")) {
+    return "memory-match";
+  }
   if (genre.includes("runner") || genre.includes("dash")) return "runner";
+  if (genre.includes("sequence") || genre.includes("pattern")) {
+    return "garden-sequence";
+  }
+  if (genre.includes("puzzle")) return "memory-match";
   return "avoid-collect";
 }
 
@@ -450,6 +452,12 @@ export function generateGameFiles(
           ? 1.1
           : 0.92,
   };
+  const statusHintByMode: Record<LocalGameMode, string> = {
+    "avoid-collect": "Move with Arrow keys, WASD, mouse, or touch drag.",
+    "memory-match": "Tap cards to reveal symbols and match every pair.",
+    runner: "Jump with Space, ArrowUp, W, or touch tap.",
+    "garden-sequence": "Watch the bloom order, then tap plots or press 1-4.",
+  };
 
   const indexHtml = `<!doctype html>
 <html lang="en">
@@ -480,7 +488,7 @@ export function generateGameFiles(
           <p>${escapeHtml(design.gameplayLoop)}</p>
           <button id="start" type="button">Start</button>
           <button id="restart" type="button" hidden>Restart</button>
-          <p id="status" class="status">Use Arrow keys, WASD, mouse, or touch.</p>
+          <p id="status" class="status">${escapeHtml(statusHintByMode[mode])}</p>
         </div>
       </div>
     </main>
