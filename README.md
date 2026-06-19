@@ -131,7 +131,7 @@ S3_PUBLIC_ENDPOINT=http://localhost:9002
 - `OPENAI_MODEL` / `DASHSCOPE_MODEL`：模型名，默认 `qwen3.7-plus`。
 - `OPENAI_ENABLE_THINKING` / `DASHSCOPE_ENABLE_THINKING`：是否启用 thinking 参数。
 - `OPENAI_JSON_RESPONSE_FORMAT`：是否要求 JSON response format。
-- `USE_LOCAL_AGENT_FALLBACK`：默认 `true`，无真实 key 时使用确定性本地 Agent fallback。
+- `USE_LOCAL_AGENT_FALLBACK`：默认 `true`，无真实 key 时使用确定性本地 Agent fallback；设为 `false` 且配置 key 后，Intent/GameDesign/CodeGen 会优先调用 OpenAI-compatible 模型。
 - `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`：可选，阿里云 DocMind 文档解析 SDK 凭据。
 - `DOCMIND_ENDPOINT`：DocMind endpoint，默认 `docmind-api.cn-hangzhou.aliyuncs.com`。
 - `DOCMIND_REGION_ID`：DocMind region，默认 `cn-hangzhou`。
@@ -154,7 +154,7 @@ docker compose up --build web worker
 - 异步任务：Redis + BullMQ。
 - 对象存储：MinIO，S3-compatible SDK，可迁移到云厂商 OSS/S3。
 - Agent：TypeScript state-machine orchestrator，包含 Intent Planner、Game Design、Code Gen、Safety Review、Build Packager、Publish Agent。
-- 模型服务：OpenAI-compatible provider，可接 DashScope 内部 endpoint；默认本地 deterministic fallback 便于离线验收。
+- 模型服务：OpenAI-compatible provider，可接 DashScope 内部 endpoint；Intent Planner、Game Design、Code Gen 均支持远程 JSON 调用，默认本地 deterministic fallback 便于离线验收。
 - Local fallback：根据 prompt 分流到躲避收集、记忆配对、横版跑酷、花园序列等不同玩法模板。
 - 安全隔离：Play iframe sandbox，生成代码安全扫描，禁止外部脚本、fetch、WebSocket、cookie/storage、`eval` 等能力。
 - 部署方式：Docker Compose 启动 web、worker、postgres、redis、minio、minio-init。
