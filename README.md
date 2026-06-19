@@ -213,7 +213,7 @@ flowchart LR
 说明：
 
 - 仓库不提交第三方 OAuth client secret。
-- 如果配置 GitHub/Google OAuth 凭据，可走授权 callback 并绑定到同一 `User`/`Session`。
+- 如果配置 GitHub/Google OAuth 凭据，可走授权 callback 并绑定到同一 `User`/`Session`，access/refresh token 会用 `SESSION_SECRET` 派生密钥加密后保存到 `Account`。
 
 ### Home
 

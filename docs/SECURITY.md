@@ -31,7 +31,7 @@ Uploaded assets and prompts are treated as untrusted. The local generator does n
 Play uses:
 
 ```html
-<iframe sandbox="allow-scripts">
+<iframe sandbox="allow-scripts"></iframe>
 ```
 
 It intentionally does not set `allow-same-origin`, so the game cannot read parent-origin storage or cookies. Parent/iframe communication uses `postMessage`, and the parent validates message shape with a schema.
@@ -41,14 +41,15 @@ It intentionally does not set `allow-same-origin`, so the game cannot read paren
 Generated HTML includes a restrictive CSP:
 
 ```html
-default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data: blob:; connect-src 'none'
+default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self'
+'unsafe-inline'; img-src data: blob:; connect-src 'none'
 ```
 
 `'unsafe-inline'` is an MVP tradeoff because generated files are simple static bundles. Production should use hash-based CSP, no inline script, strict asset hashing, and a dedicated sandbox domain.
 
 ## Secrets
 
-Secrets are read only on the server. `SESSION_SECRET`, S3 credentials, and model keys are never exposed to client components.
+Secrets are read only on the server. `SESSION_SECRET`, S3 credentials, model keys, and OAuth provider tokens are never exposed to client components. OAuth access/refresh tokens are encrypted at rest with AES-256-GCM using a key derived from `SESSION_SECRET`.
 
 ## Resource Limits
 

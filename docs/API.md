@@ -25,7 +25,7 @@ All successful responses use `{ "ok": true, "data": ... }`. Errors use `{ "ok": 
   - Requires provider client id/secret environment variables.
 
 - `GET /api/auth/oauth/{github|google}/callback`
-  - Validates OAuth `state`, exchanges `code`, fetches a verified email profile, upserts `Account`, and creates the same httpOnly session cookie as credentials auth.
+  - Validates OAuth `state`, exchanges `code`, fetches a verified email profile, upserts `Account`, encrypts access/refresh tokens at rest, and creates the same httpOnly session cookie as credentials auth.
 
 ## Assets
 
