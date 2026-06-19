@@ -67,6 +67,10 @@ All successful responses use `{ "ok": true, "data": ... }`. Errors use `{ "ok": 
   - Returns game meta, author, and current version.
   - Drafts are visible only to the author.
 
+- `PATCH /api/games/{gameId}`
+  - Auth required and author-only.
+  - Updates `title`, `description`, and `tags`.
+
 - `POST /api/games/{gameId}/publish`
   - Auth required and author-only.
   - Marks a draft game as `published` and sets `publishedAt`.
@@ -74,6 +78,10 @@ All successful responses use `{ "ok": true, "data": ... }`. Errors use `{ "ok": 
 - `GET /api/games/{gameId}/manifest`
   - Returns `{ manifestUrl, artifactBaseUrl, manifestJson }`.
   - Play uses this to fetch the remote object-storage manifest.
+
+- `POST /api/games/{gameId}/versions/{versionId}/rollback`
+  - Auth required and author-only.
+  - Sets `Game.currentVersionId` to a succeeded historical version.
 
 - `POST /api/games/{gameId}/like`
   - Auth required.

@@ -251,7 +251,7 @@ flowchart LR
 - 失败重试。
 - 生成任务历史。
 - Remix：从历史任务恢复 prompt 和素材。
-- 版本管理：`GameVersion` 持久化和详情页展示。
+- 版本管理：`GameVersion` 持久化、详情页展示、作者编辑 meta、作者回滚当前版本。
 - 成本估算：根据 prompt、素材大小、输出代码体量估算。
 - 安全审查：扫描危险浏览器能力。
 - 产物地址展示与 Preview/Publish。
@@ -271,8 +271,10 @@ flowchart LR
 - `GET /api/jobs/{jobId}/logs`：Agent logs。
 - `GET /api/games`：游戏列表，支持 `search`、`tag`。
 - `GET /api/games/{gameId}`：游戏详情。
+- `PATCH /api/games/{gameId}`：作者更新标题、简介和标签。
 - `POST /api/games/{gameId}/publish`：发布草稿。
 - `GET /api/games/{gameId}/manifest`：Play manifest。
+- `POST /api/games/{gameId}/versions/{versionId}/rollback`：作者恢复历史版本为当前版本。
 - `POST /api/games/{gameId}/like`：点赞/取消点赞。
 - `POST /api/games/{gameId}/favorite`：收藏/取消收藏。
 - `POST /api/telemetry/play`：游玩埋点。
@@ -431,8 +433,8 @@ Mock / fallback：
 
 - 生成游戏 sandbox 仍与主站同域下 iframe 加载对象存储 URL，生产建议迁到独立 sandbox origin。
 - 生成代码安全审查是静态规则扫描，生产需引入更强 AST/沙箱执行/资源限制。
-- 版本管理已持久化和展示，但作者侧 rollback/edit UI 未做。
-- OAuth token 未持久化；如果后续要调用 provider API，需要加密存储和刷新机制。
+- 版本管理已持久化，作者可在详情页编辑 meta 并回滚当前版本。
+- OAuth token 已加密持久化；生产环境仍建议补充 provider refresh token 轮换、撤销和审计。
 - 暂无线上部署地址，本交付为本地 Docker Compose Demo。
 
 ## 14. 如果再给一周的迭代计划

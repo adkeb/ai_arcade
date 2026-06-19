@@ -39,3 +39,12 @@ export const gamesQuerySchema = z.object({
   search: z.string().trim().max(80).optional(),
   tag: z.string().trim().max(40).optional(),
 });
+
+export const updateGameSchema = z.object({
+  title: z.string().trim().min(2).max(80),
+  description: z.string().trim().min(10).max(500),
+  tags: z
+    .array(z.string().trim().min(1).max(24))
+    .max(8)
+    .transform((tags) => Array.from(new Set(tags))),
+});
