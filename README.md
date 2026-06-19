@@ -156,7 +156,7 @@ docker compose up --build web worker
 - Agent：TypeScript state-machine orchestrator，包含 Intent Planner、Game Design、Code Gen、Safety Review、Build Packager、Publish Agent。
 - 模型服务：OpenAI-compatible provider，可接 DashScope 内部 endpoint；Intent Planner、Game Design、Code Gen 均支持远程 JSON 调用，默认本地 deterministic fallback 便于离线验收。
 - Local fallback：根据 prompt 分流到躲避收集、记忆配对、横版跑酷、花园序列等不同玩法模板。
-- 安全隔离：Play iframe sandbox，生成代码安全扫描，禁止外部脚本、fetch、WebSocket、cookie/storage、`eval` 等能力。
+- 安全隔离：Play iframe sandbox + no-referrer + feature policy deny-list，生成代码安全扫描，CSP 禁止内联脚本/样式、外部网络、表单、嵌入对象、cookie/storage、`eval` 等能力。
 - 部署方式：Docker Compose 启动 web、worker、postgres、redis、minio、minio-init。
 - 测试：TypeScript、ESLint、Next production build、Playwright E2E。
 

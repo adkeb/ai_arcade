@@ -3,6 +3,15 @@ import { generateGameFiles } from "../local-generator";
 import type { GameDesignSpec, GameSourceFiles, IntentPlan } from "../types";
 
 const MAX_SOURCE_LENGTH = 120_000;
+const REQUIRED_CSP_PARTS = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "connect-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "object-src 'none'",
+];
 
 function stripFence(value: string): string {
   const trimmed = value.trim();
@@ -32,6 +41,9 @@ function normalizeRemoteFiles(value: unknown): GameSourceFiles | null {
   }
   if (!/<(?:!doctype\s+html|html|body|canvas|main)\b/i.test(indexHtml))
     return null;
+  const csp = extractCsp(indexHtml);
+  if (!csp || /unsafe-inline|unsafe-eval/i.test(csp)) return null;
+  if (!REQUIRED_CSP_PARTS.every((part) => csp.includes(part))) return null;
   if (
     !/(?:requestAnimationFrame|addEventListener|setInterval|onclick|pointer)/i.test(
       gameJs,
@@ -40,6 +52,14 @@ function normalizeRemoteFiles(value: unknown): GameSourceFiles | null {
     return null;
 
   return { indexHtml, gameJs, styleCss };
+}
+
+function extractCsp(indexHtml: string): string {
+  const metas = indexHtml.match(/<meta\b[^>]*>/gi) ?? [];
+  const cspMeta = metas.find((meta) =>
+    /http-equiv=["']content-security-policy["']/i.test(meta),
+  );
+  return cspMeta?.match(/\bcontent=(["'])(.*?)\1/i)?.[2] ?? "";
 }
 
 export async function runCodeGenAgent(
@@ -59,6 +79,7 @@ export async function runCodeGenAgent(
         intent,
         requirements: [
           "indexHtml must be a full HTML document that links ./style.css and defers ./game.js",
+          "indexHtml must include a meta Content-Security-Policy with default-src 'none', script-src 'self', style-src 'self', connect-src 'none', base-uri 'none', form-action 'none', and object-src 'none'",
           "gameJs must implement actual game state, controls, scoring, win/lose conditions, restart, and animation or interaction",
           "styleCss must define responsive layout and readable in-game HUD styles",
           "Keep all code self-contained and deterministic enough for safety scanning",
