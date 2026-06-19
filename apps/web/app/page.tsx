@@ -3,6 +3,7 @@ import { PlusCircle, Search, Tags, X } from "lucide-react";
 import { db } from "@ai-arcade/db";
 import { GameCard } from "@/components/GameCard";
 import { getCurrentUser } from "@/lib/auth";
+import { filterShowcaseGames, selectShowcaseGames } from "@/lib/game-showcase";
 
 export const dynamic = "force-dynamic";
 
@@ -18,19 +19,11 @@ type GameWithViewerState = Awaited<ReturnType<typeof loadGames>>[number] & {
   favoritedByCurrentUser?: boolean;
 };
 
-async function loadGames(params: { search: string; tag: string; userId?: string }) {
+async function loadGames(params: { userId?: string }) {
   return db.game.findMany({
     where: {
       status: "published",
-      ...(params.search
-        ? {
-            OR: [
-              { title: { contains: params.search, mode: "insensitive" as const } },
-              { description: { contains: params.search, mode: "insensitive" as const } }
-            ]
-          }
-        : {}),
-      ...(params.tag ? { tags: { has: params.tag } } : {})
+      currentVersionId: { not: null },
     },
     include: {
       author: { select: { username: true } },
@@ -38,11 +31,14 @@ async function loadGames(params: { search: string; tag: string; userId?: string 
       ...(params.userId
         ? {
             likes: { where: { userId: params.userId }, select: { id: true } },
-            favorites: { where: { userId: params.userId }, select: { id: true } }
+            favorites: {
+              where: { userId: params.userId },
+              select: { id: true },
+            },
           }
-        : {})
+        : {}),
     },
-    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }]
+    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
   });
 }
 
@@ -52,20 +48,18 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const tag = typeof params.tag === "string" ? params.tag.trim() : "";
   const user = await getCurrentUser();
 
-  const [games, tagRows] = await Promise.all([
-    loadGames({ search, tag, userId: user?.id }),
-    db.game.findMany({
-      where: { status: "published" },
-      select: { tags: true }
-    })
-  ]);
+  const games = await loadGames({ userId: user?.id });
+  const showcaseGames = selectShowcaseGames(games);
+  const filteredGames = filterShowcaseGames(showcaseGames, { search, tag });
+  const tags = Array.from(
+    new Set(showcaseGames.flatMap((game) => game.tags)),
+  ).sort((a, b) => a.localeCompare(b));
 
-  const tags = Array.from(new Set(tagRows.flatMap((row) => row.tags))).sort((a, b) => a.localeCompare(b));
-
-  const cards: GameWithViewerState[] = games.map((game) => ({
+  const cards: GameWithViewerState[] = filteredGames.map((game) => ({
     ...game,
     likedByCurrentUser: "likes" in game ? game.likes.length > 0 : false,
-    favoritedByCurrentUser: "favorites" in game ? game.favorites.length > 0 : false
+    favoritedByCurrentUser:
+      "favorites" in game ? game.favorites.length > 0 : false,
   }));
   const hasFilters = Boolean(search || tag);
 
@@ -73,13 +67,21 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     <div className="space-y-7">
       <section className="flex flex-wrap items-end justify-between gap-5 border-b border-slate-200 pb-6">
         <div className="max-w-3xl">
-          <p className="text-sm font-black uppercase tracking-wide text-teal-700">Published games</p>
-          <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950">AI Arcade</h1>
+          <p className="text-sm font-black uppercase tracking-wide text-teal-700">
+            Published games
+          </p>
+          <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950">
+            AI Arcade
+          </h1>
           <p className="mt-3 text-base leading-7 text-slate-600">
-            Browse HTML5 games generated through the Create pipeline, saved to MinIO, and loaded by remote manifest at play time.
+            Browse HTML5 games generated through the Create pipeline, saved to
+            MinIO, and loaded by remote manifest at play time.
           </p>
         </div>
-        <Link className="flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-3 font-bold text-white hover:bg-slate-800" href="/create">
+        <Link
+          className="flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-3 font-bold text-white hover:bg-slate-800"
+          href="/create"
+        >
           <PlusCircle size={18} aria-hidden="true" />
           Create game
         </Link>
@@ -88,7 +90,11 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <form action="/" className="flex flex-col gap-3 md:flex-row">
           <label className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} aria-hidden="true" />
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              size={18}
+              aria-hidden="true"
+            />
             <span className="sr-only">Search games</span>
             <input
               name="search"
@@ -125,7 +131,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             {tags.map((item) => {
               const href = `/?${new URLSearchParams({
                 ...(search ? { search } : {}),
-                tag: item
+                tag: item,
               }).toString()}`;
               return (
                 <Link
@@ -147,9 +153,15 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
       {cards.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center">
-          <h2 className="text-xl font-black text-slate-950">{hasFilters ? "No games match these filters" : "No published games yet"}</h2>
+          <h2 className="text-xl font-black text-slate-950">
+            {hasFilters
+              ? "No games match these filters"
+              : "No published games yet"}
+          </h2>
           <p className="mt-2 text-slate-600">
-            {hasFilters ? "Try a different keyword or tag." : "Run the seed command or publish a generated game from Create."}
+            {hasFilters
+              ? "Try a different keyword or tag."
+              : "Run the seed command or publish a generated game from Create."}
           </p>
         </div>
       ) : (

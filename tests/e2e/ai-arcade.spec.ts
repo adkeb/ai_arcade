@@ -67,6 +67,7 @@ test("home lists database games and play loads remote manifest entry", async ({
 
   const cards = page.locator("article");
   await expect.poll(async () => cards.count()).toBeGreaterThanOrEqual(3);
+  expect(await cards.count()).toBeLessThanOrEqual(4);
   await page.screenshot({
     path: path.join(screenshotDir, "home.png"),
     fullPage: true,
@@ -77,6 +78,15 @@ test("home lists database games and play loads remote manifest entry", async ({
   const gamesPayload = (await gamesResponse.json()) as GamesResponse;
   expect(gamesPayload.ok).toBeTruthy();
   expect(gamesPayload.data.games.length).toBeGreaterThanOrEqual(3);
+  expect(gamesPayload.data.games.length).toBeLessThanOrEqual(4);
+  const showcaseModes = gamesPayload.data.games
+    .map((item) =>
+      ["avoid-collect", "memory-match", "runner", "garden-sequence"].find(
+        (mode) => item.tags.includes(mode),
+      ),
+    )
+    .filter(Boolean);
+  expect(new Set(showcaseModes).size).toBe(showcaseModes.length);
 
   const game =
     gamesPayload.data.games.find(
