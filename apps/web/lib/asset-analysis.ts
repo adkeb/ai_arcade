@@ -1,3 +1,4 @@
+import { inflateSync } from "node:zlib";
 import type { AssetAnalysis } from "@ai-arcade/shared";
 import { parseWithDocMind } from "@/lib/docmind";
 
@@ -95,19 +96,183 @@ function analyzePdf(mimeType: string, buffer: Buffer): AssetAnalysis {
   };
 }
 
-function pngMetadata(buffer: Buffer) {
+type ImageMetadata = Record<string, string | number | boolean | null>;
+
+function hexColor(red: number, green: number, blue: number): string {
+  return `#${[red, green, blue]
+    .map((value) =>
+      Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+function imageOrientation(width: number | null, height: number | null): string {
+  if (!width || !height) return "unknown";
+  if (width > height * 1.2) return "landscape";
+  if (height > width * 1.2) return "portrait";
+  return "square-ish";
+}
+
+function colorMood(red: number, green: number, blue: number): string {
+  const brightness = 0.299 * red + 0.587 * green + 0.114 * blue;
+  const warmth = red - blue;
+  const lightness =
+    brightness < 70 ? "dark" : brightness > 185 ? "bright" : "balanced";
+  const temperature = warmth > 35 ? "warm" : warmth < -35 ? "cool" : "neutral";
+  return `${lightness} ${temperature}`;
+}
+
+function paethPredictor(left: number, up: number, upperLeft: number): number {
+  const estimate = left + up - upperLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const upDistance = Math.abs(estimate - up);
+  const upperLeftDistance = Math.abs(estimate - upperLeft);
+  if (leftDistance <= upDistance && leftDistance <= upperLeftDistance)
+    return left;
+  return upDistance <= upperLeftDistance ? up : upperLeft;
+}
+
+function undoPngFilter(
+  filterType: number,
+  row: Uint8Array<ArrayBufferLike>,
+  previous: Uint8Array<ArrayBufferLike>,
+  bytesPerPixel: number,
+): Uint8Array<ArrayBufferLike> {
+  const output = new Uint8Array(row.length);
+  for (let index = 0; index < row.length; index += 1) {
+    const left =
+      index >= bytesPerPixel ? (output[index - bytesPerPixel] ?? 0) : 0;
+    const up = previous[index] ?? 0;
+    const upperLeft =
+      index >= bytesPerPixel ? (previous[index - bytesPerPixel] ?? 0) : 0;
+    const value = row[index] ?? 0;
+    if (filterType === 0) output[index] = value;
+    else if (filterType === 1) output[index] = (value + left) & 0xff;
+    else if (filterType === 2) output[index] = (value + up) & 0xff;
+    else if (filterType === 3)
+      output[index] = (value + Math.floor((left + up) / 2)) & 0xff;
+    else if (filterType === 4)
+      output[index] = (value + paethPredictor(left, up, upperLeft)) & 0xff;
+    else output[index] = value;
+  }
+  return output;
+}
+
+function pngColorAnalysis(buffer: Buffer): ImageMetadata {
+  try {
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    const bitDepth = buffer.readUInt8(24);
+    const colorType = buffer.readUInt8(25);
+    const interlace = buffer.readUInt8(28);
+    if (bitDepth !== 8 || interlace !== 0 || ![0, 2, 6].includes(colorType))
+      return {};
+
+    const bytesPerPixel = colorType === 6 ? 4 : colorType === 2 ? 3 : 1;
+    let offset = 8;
+    const chunks: Buffer[] = [];
+    while (offset + 12 <= buffer.length) {
+      const length = buffer.readUInt32BE(offset);
+      const type = buffer.toString("ascii", offset + 4, offset + 8);
+      const dataStart = offset + 8;
+      const dataEnd = dataStart + length;
+      if (dataEnd > buffer.length) break;
+      if (type === "IDAT") chunks.push(buffer.subarray(dataStart, dataEnd));
+      if (type === "IEND") break;
+      offset = dataEnd + 4;
+    }
+    if (chunks.length === 0) return {};
+
+    const inflated = inflateSync(Buffer.concat(chunks));
+    const rowLength = width * bytesPerPixel;
+    let cursor = 0;
+    let previous: Uint8Array<ArrayBufferLike> = new Uint8Array(rowLength);
+    const counts = new Map<string, number>();
+    let redTotal = 0;
+    let greenTotal = 0;
+    let blueTotal = 0;
+    let samples = 0;
+    const sampleModulo = Math.max(1, Math.floor((width * height) / 4096));
+
+    for (
+      let y = 0;
+      y < height && cursor + 1 + rowLength <= inflated.length;
+      y += 1
+    ) {
+      const filterType = inflated[cursor] ?? 0;
+      const row = inflated.subarray(cursor + 1, cursor + 1 + rowLength);
+      const unfiltered = undoPngFilter(
+        filterType,
+        row,
+        previous,
+        bytesPerPixel,
+      );
+      previous = unfiltered;
+      cursor += 1 + rowLength;
+
+      for (let x = 0; x < width; x += 1) {
+        const pixelIndex = y * width + x;
+        if (pixelIndex % sampleModulo !== 0) continue;
+        const byteIndex = x * bytesPerPixel;
+        const red =
+          colorType === 0
+            ? (unfiltered[byteIndex] ?? 0)
+            : (unfiltered[byteIndex] ?? 0);
+        const green = colorType === 0 ? red : (unfiltered[byteIndex + 1] ?? 0);
+        const blue = colorType === 0 ? red : (unfiltered[byteIndex + 2] ?? 0);
+        redTotal += red;
+        greenTotal += green;
+        blueTotal += blue;
+        samples += 1;
+        const bucket = hexColor(
+          Math.round(red / 32) * 32,
+          Math.round(green / 32) * 32,
+          Math.round(blue / 32) * 32,
+        );
+        counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
+      }
+    }
+
+    if (samples === 0) return {};
+    const averageRed = Math.round(redTotal / samples);
+    const averageGreen = Math.round(greenTotal / samples);
+    const averageBlue = Math.round(blueTotal / samples);
+    const dominantColors = Array.from(counts.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 5)
+      .map(([color]) => color)
+      .join(", ");
+
+    return {
+      averageColor: hexColor(averageRed, averageGreen, averageBlue),
+      dominantColors,
+      brightness: Math.round(
+        0.299 * averageRed + 0.587 * averageGreen + 0.114 * averageBlue,
+      ),
+      colorMood: colorMood(averageRed, averageGreen, averageBlue),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function pngMetadata(buffer: Buffer): ImageMetadata | null {
   if (buffer.length < 29 || buffer.toString("ascii", 1, 4) !== "PNG")
     return null;
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
   return {
     format: "png",
-    width: buffer.readUInt32BE(16),
-    height: buffer.readUInt32BE(20),
+    width,
+    height,
+    orientation: imageOrientation(width, height),
     bitDepth: buffer.readUInt8(24),
     colorType: buffer.readUInt8(25),
+    ...pngColorAnalysis(buffer),
   };
 }
 
-function jpegMetadata(buffer: Buffer) {
+function jpegMetadata(buffer: Buffer): ImageMetadata | null {
   if (buffer.length < 4 || buffer.readUInt16BE(0) !== 0xffd8) return null;
   let offset = 2;
   while (offset + 9 < buffer.length) {
@@ -127,6 +292,10 @@ function jpegMetadata(buffer: Buffer) {
         format: "jpeg",
         width: buffer.readUInt16BE(offset + 7),
         height: buffer.readUInt16BE(offset + 5),
+        orientation: imageOrientation(
+          buffer.readUInt16BE(offset + 7),
+          buffer.readUInt16BE(offset + 5),
+        ),
         precision: buffer.readUInt8(offset + 4),
       };
     }
@@ -135,18 +304,38 @@ function jpegMetadata(buffer: Buffer) {
   return null;
 }
 
-function gifMetadata(buffer: Buffer) {
+function gifMetadata(buffer: Buffer): ImageMetadata | null {
   const signature = buffer.toString("ascii", 0, 6);
   if (buffer.length < 10 || (signature !== "GIF87a" && signature !== "GIF89a"))
     return null;
+  const packed = buffer.readUInt8(10);
+  const hasGlobalColorTable = (packed & 0x80) !== 0;
+  const colorCount = hasGlobalColorTable ? 2 ** ((packed & 0x07) + 1) : 0;
+  const palette: string[] = [];
+  if (hasGlobalColorTable && buffer.length >= 13 + colorCount * 3) {
+    for (let index = 0; index < Math.min(colorCount, 5); index += 1) {
+      const offset = 13 + index * 3;
+      palette.push(
+        hexColor(
+          buffer[offset] ?? 0,
+          buffer[offset + 1] ?? 0,
+          buffer[offset + 2] ?? 0,
+        ),
+      );
+    }
+  }
+  const width = buffer.readUInt16LE(6);
+  const height = buffer.readUInt16LE(8);
   return {
     format: "gif",
-    width: buffer.readUInt16LE(6),
-    height: buffer.readUInt16LE(8),
+    width,
+    height,
+    orientation: imageOrientation(width, height),
+    paletteColors: palette.join(", ") || null,
   };
 }
 
-function webpMetadata(buffer: Buffer) {
+function webpMetadata(buffer: Buffer): ImageMetadata | null {
   if (
     buffer.length < 30 ||
     buffer.toString("ascii", 0, 4) !== "RIFF" ||
@@ -160,9 +349,13 @@ function webpMetadata(buffer: Buffer) {
       format: "webp",
       width: 1 + buffer.readUIntLE(24, 3),
       height: 1 + buffer.readUIntLE(27, 3),
+      orientation: imageOrientation(
+        1 + buffer.readUIntLE(24, 3),
+        1 + buffer.readUIntLE(27, 3),
+      ),
     };
   }
-  return { format: "webp", width: null, height: null };
+  return { format: "webp", width: null, height: null, orientation: null };
 }
 
 function analyzeImage(mimeType: string, buffer: Buffer): AssetAnalysis {
@@ -171,12 +364,27 @@ function analyzeImage(mimeType: string, buffer: Buffer): AssetAnalysis {
     jpegMetadata(buffer) ??
     gifMetadata(buffer) ??
     webpMetadata(buffer);
+  const visualDetails =
+    metadata && metadata.width && metadata.height
+      ? [
+          `${metadata.format} ${metadata.width}x${metadata.height}`,
+          metadata.orientation,
+          metadata.dominantColors
+            ? `dominant colors ${metadata.dominantColors}`
+            : "",
+          metadata.colorMood ? `${metadata.colorMood} palette` : "",
+          metadata.paletteColors ? `palette ${metadata.paletteColors}` : "",
+        ]
+          .filter(Boolean)
+          .join(", ")
+      : "";
   return {
     kind: "image",
     summary:
       metadata && metadata.width && metadata.height
-        ? `Image asset parsed as ${metadata.format}, ${metadata.width}x${metadata.height}.`
+        ? `Image asset parsed as ${visualDetails}.`
         : "Image asset detected; dimensions were not extractable from the header.",
+    textExcerpt: visualDetails || undefined,
     metadata: {
       mimeType,
       ...(metadata ?? { format: mimeType.split("/")[1] ?? "image" }),
@@ -218,18 +426,50 @@ function readMp4Duration(buffer: Buffer) {
   return null;
 }
 
+function mp4Brands(buffer: Buffer): string {
+  if (buffer.length < 16 || buffer.toString("ascii", 4, 8) !== "ftyp")
+    return "";
+  const major = buffer.toString("ascii", 8, 12).replace(/\0/g, "").trim();
+  const compatible: string[] = [];
+  for (
+    let offset = 16;
+    offset + 4 <= Math.min(buffer.length, 64);
+    offset += 4
+  ) {
+    const brand = buffer
+      .toString("ascii", offset, offset + 4)
+      .replace(/\0/g, "")
+      .trim();
+    if (brand && /^[\w -]+$/.test(brand)) compatible.push(brand);
+  }
+  return [major, ...compatible.filter((brand) => brand !== major)]
+    .filter(Boolean)
+    .slice(0, 6)
+    .join(", ");
+}
+
 function analyzeVideo(mimeType: string, buffer: Buffer): AssetAnalysis {
   const isMp4 = buffer.toString("ascii", 4, 8) === "ftyp";
   const duration = isMp4 ? readMp4Duration(buffer) : null;
+  const brands = isMp4 ? mp4Brands(buffer) : "";
+  const textExcerpt = [
+    isMp4 ? "MP4 video container" : "video asset",
+    duration ? `duration about ${duration}s` : "",
+    brands ? `brands ${brands}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
   return {
     kind: "video",
     summary: duration
       ? `Video asset parsed as MP4, duration about ${duration}s.`
       : "Video asset detected with basic container metadata.",
+    textExcerpt,
     metadata: {
       mimeType,
       container: isMp4 ? "mp4" : "unknown",
       durationSeconds: duration,
+      brands: brands || null,
     },
     warnings: duration
       ? undefined

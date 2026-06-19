@@ -28,6 +28,9 @@ Uploaded assets and prompts are treated as untrusted. The local generator does n
 - `navigator.credentials`
 - `window.top`
 - geolocation and media capture
+- AST-detected unbounded `while`/`for`/`do` loops
+- string timer execution and high-frequency `setInterval`
+- dangerous constructors and sensitive browser property access found through the TypeScript parser
 
 ## Runtime Isolation
 
@@ -53,7 +56,7 @@ font-src 'none'; media-src 'none'; connect-src 'none'; worker-src 'none';
 frame-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'
 ```
 
-Generated games are split into `index.html`, `style.css`, and `game.js`, so inline script/style is not needed. Production should still serve generated artifacts from a dedicated sandbox origin with HTTP-level CSP headers, per-user quotas, CPU timeouts, artifact size limits, and abuse monitoring.
+Generated games are split into `index.html`, `style.css`, and `game.js`, so inline script/style is not needed. Production should still serve generated artifacts from a dedicated sandbox origin with HTTP-level CSP headers, per-user quotas, CPU/memory timeouts, artifact size limits, and abuse monitoring.
 
 ## Secrets
 
@@ -61,4 +64,4 @@ Secrets are read only on the server. `SESSION_SECRET`, S3 credentials, model key
 
 ## Resource Limits
 
-The MVP limits upload size and Worker lock duration. Production should add per-user quotas, CPU timeouts, artifact size limits, malware scanning, and abuse monitoring.
+The MVP limits upload size, Worker lock duration, source file size, and common static CPU-risk patterns. Production should add per-user quotas, browser/container CPU and memory limits, artifact size limits, malware scanning, and abuse monitoring.

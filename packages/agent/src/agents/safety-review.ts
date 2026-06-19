@@ -1,6 +1,8 @@
+import ts from "typescript";
 import type { GameSourceFiles, SafetyReview } from "../types";
 
 const MAX_FILE_LENGTH = 150_000;
+const MIN_TIMER_INTERVAL_MS = 16;
 const requiredCspParts = [
   "default-src 'none'",
   "script-src 'self'",
@@ -85,6 +87,122 @@ function sizeFindings(files: GameSourceFiles): string[] {
     );
 }
 
+function expressionName(node: ts.Expression): string {
+  if (ts.isIdentifier(node)) return node.text;
+  if (ts.isPropertyAccessExpression(node)) {
+    return `${expressionName(node.expression)}.${node.name.text}`;
+  }
+  return node.getText();
+}
+
+function isTrueLiteral(node: ts.Expression): boolean {
+  return node.kind === ts.SyntaxKind.TrueKeyword;
+}
+
+function numericLiteralValue(node: ts.Expression | undefined): number | null {
+  if (!node) return null;
+  if (ts.isNumericLiteral(node)) return Number(node.text);
+  if (
+    ts.isPrefixUnaryExpression(node) &&
+    node.operator === ts.SyntaxKind.MinusToken &&
+    ts.isNumericLiteral(node.operand)
+  ) {
+    return -Number(node.operand.text);
+  }
+  return null;
+}
+
+function astFindings(files: GameSourceFiles): string[] {
+  const source = ts.createSourceFile(
+    "game.js",
+    files.gameJs,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const findings = new Set<string>();
+
+  function visit(node: ts.Node) {
+    if (ts.isWhileStatement(node) && isTrueLiteral(node.expression)) {
+      findings.add(
+        "Blocked generated code capability: AST unbounded while loop",
+      );
+    }
+    if (ts.isDoStatement(node) && isTrueLiteral(node.expression)) {
+      findings.add("Blocked generated code capability: AST unbounded do loop");
+    }
+    if (ts.isForStatement(node) && !node.condition) {
+      findings.add("Blocked generated code capability: AST unbounded for loop");
+    }
+
+    if (ts.isCallExpression(node)) {
+      const callee = expressionName(node.expression);
+      if (callee === "setTimeout" || callee === "setInterval") {
+        if (node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
+          findings.add(
+            "Blocked generated code capability: AST string timer execution",
+          );
+        }
+        const delay = numericLiteralValue(node.arguments[1]);
+        if (
+          callee === "setInterval" &&
+          delay !== null &&
+          delay < MIN_TIMER_INTERVAL_MS
+        ) {
+          findings.add(
+            "Blocked generated code capability: AST high-frequency timer",
+          );
+        }
+      }
+      if (callee === "globalThis.eval" || callee.endsWith(".constructor")) {
+        findings.add(
+          "Blocked generated code capability: AST dynamic code execution",
+        );
+      }
+    }
+
+    if (ts.isNewExpression(node)) {
+      const callee = expressionName(node.expression);
+      if (
+        callee === "Function" ||
+        callee === "Worker" ||
+        callee === "SharedWorker" ||
+        callee === "WebSocket"
+      ) {
+        findings.add(
+          `Blocked generated code capability: AST constructor ${callee}`,
+        );
+      }
+    }
+
+    if (ts.isPropertyAccessExpression(node)) {
+      const path = expressionName(node);
+      if (
+        path === "document.cookie" ||
+        path === "document.domain" ||
+        path === "document.write" ||
+        path === "navigator.serviceWorker" ||
+        path === "navigator.clipboard" ||
+        path === "navigator.credentials" ||
+        path === "navigator.geolocation" ||
+        path === "window.top" ||
+        path === "globalThis.top" ||
+        path === "window.parent" ||
+        path === "parent.location" ||
+        path === "top.location" ||
+        path === "opener.location"
+      ) {
+        findings.add(`Blocked generated code capability: AST access ${path}`);
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(source);
+  return Array.from(findings);
+}
+
 export async function runSafetyReviewAgent(
   files: GameSourceFiles,
 ): Promise<SafetyReview> {
@@ -95,6 +213,7 @@ export async function runSafetyReviewAgent(
     ...blockedPatterns
       .filter((pattern) => pattern.regex.test(joined))
       .map((pattern) => `Blocked generated code capability: ${pattern.label}`),
+    ...astFindings(files),
   ];
 
   return {

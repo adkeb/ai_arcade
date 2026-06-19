@@ -19,7 +19,8 @@
   "dependencies": {
     "@ai-arcade/db": "workspace:*",
     "@ai-arcade/shared": "workspace:*",
-    "@ai-arcade/storage": "workspace:*"
+    "@ai-arcade/storage": "workspace:*",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
