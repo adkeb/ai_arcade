@@ -86,7 +86,7 @@ S3_PUBLIC_ENDPOINT=http://localhost:9002
 
 建议验收路径：
 
-1. 打开 `http://localhost:3000`，确认 Home 展示至少 3 个已发布游戏。
+1. 打开 `http://localhost:3000`，确认 Home 最多展示四个玩法代表游戏。
 2. 进入 `/login`，使用测试账号登录。
 3. 进入 `/create`，输入创意 prompt，并上传一个图片、文本、PDF 或 JSON 文件。
 4. 点击 Generate，观察任务状态、进度条、Agent logs、成本估算和任务历史。
@@ -103,11 +103,12 @@ S3_PUBLIC_ENDPOINT=http://localhost:9002
 `pnpm db:seed` 或 `docker compose up --build` 会自动写入测试数据：
 
 - `Pixel Runner`：手工 seed 的示例游戏。
+- `Pattern Cards`：手工 seed 的记忆配对示例游戏。
 - `Memory Garden`：手工 seed 的示例游戏。
 - `Orbit Spark Dash`：模拟 Agent 生成并发布的示例游戏。
 - `creator@example.com`：测试创作者账号。
 
-这满足 PDF 要求：系统内至少 3 个示例游戏，且至少 1 个来自 Create/Agent 生成流程并发布。
+这满足 PDF 要求：系统内至少 3 个示例游戏，且至少 1 个来自 Create/Agent 生成流程并发布。Home/API 会从 `avoid-collect`、`memory-match`、`runner`、`garden-sequence` 四个玩法 tag 中各展示最新一条。
 
 ## 5. 环境变量说明
 
@@ -128,12 +129,12 @@ S3_PUBLIC_ENDPOINT=http://localhost:9002
 - `S3_ARTIFACTS_BUCKET`：游戏产物 bucket，默认 `game-artifacts`。
 - `MAX_UPLOAD_MB`：上传文件大小限制。
 - `JOB_TIMEOUT_SECONDS`：生成任务超时时间。
-- `OPENAI_API_KEY` 或 `DASHSCOPE_API_KEY`：可选 OpenAI-compatible 模型 key。
+- `OPENAI_API_KEY` 或 `DASHSCOPE_API_KEY`：真实 Create/Regenerate 必需的 OpenAI-compatible 模型 key。
 - `OPENAI_BASE_URL` / `DASHSCOPE_BASE_URL`：OpenAI-compatible endpoint。
 - `OPENAI_MODEL` / `DASHSCOPE_MODEL`：模型名，默认 `qwen3.7-plus`。
 - `OPENAI_ENABLE_THINKING` / `DASHSCOPE_ENABLE_THINKING`：是否启用 thinking 参数。
 - `OPENAI_JSON_RESPONSE_FORMAT`：是否要求 JSON response format。
-- `USE_LOCAL_AGENT_FALLBACK`：默认 `true`，无真实 key 时使用确定性本地 Agent fallback；设为 `false` 且配置 key 后，Intent/GameDesign/CodeGen 会优先调用 OpenAI-compatible 模型。
+- `USE_LOCAL_AGENT_FALLBACK`：默认 `false`。仅离线 demo、seed 和测试需要本地模板时设为 `true`；关闭 fallback 且缺少模型 key 时，Create/Regenerate 会失败并提示未配置真实模型。
 - `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`：可选，阿里云 DocMind 文档解析 SDK 凭据。
 - `DOCMIND_ENDPOINT`：DocMind endpoint，默认 `docmind-api.cn-hangzhou.aliyuncs.com`。
 - `DOCMIND_ACCESS_KEY_ID` / `DOCMIND_ACCESS_KEY_SECRET`：可选，DocMind 专用 AK/SK；未设置时回退到 `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`。
@@ -158,8 +159,8 @@ docker compose up --build web worker
 - 异步任务：Redis + BullMQ。
 - 对象存储：MinIO，S3-compatible SDK，可迁移到云厂商 OSS/S3。
 - Agent：TypeScript state-machine orchestrator，包含 Intent Planner、Game Design、Code Gen、Safety Review、Build Packager、Publish Agent。
-- 模型服务：OpenAI-compatible provider，可接 DashScope 内部 endpoint；Intent Planner、Game Design、Code Gen 均支持远程 JSON 调用，默认本地 deterministic fallback 便于离线验收。
-- Local fallback：根据 prompt 分流到躲避收集、记忆配对、横版跑酷、花园序列等不同玩法模板。
+- 模型服务：OpenAI-compatible provider，可接 DashScope 内部 endpoint；Intent Planner、Game Design、Code Gen 默认要求远程 JSON 调用，CodeGen 带质量门槛和最多两次模型修复。
+- Local fallback：仅在显式 `USE_LOCAL_AGENT_FALLBACK=true` 时用于离线 demo、seed 和测试；根据 prompt 分流到躲避收集、记忆配对、横版跑酷、花园序列等不同玩法模板。
 - 安全隔离：Play iframe sandbox + no-referrer + feature policy deny-list，生成代码安全扫描，CSP 禁止内联脚本/样式、外部网络、表单、嵌入对象、cookie/storage、`eval` 等能力。
 - 安全审查：SafetyReview 使用正则 + TypeScript AST 扫描，拦截无界循环、字符串定时器、高频定时器、危险构造器和敏感浏览器属性访问。
 - 部署方式：Docker Compose 启动 web、worker、postgres、redis、minio、minio-init。
@@ -224,12 +225,12 @@ flowchart LR
 
 已完成：
 
-- 展示所有已发布游戏。
+- 从已发布且有 currentVersion 的游戏中，按 `avoid-collect`、`memory-match`、`runner`、`garden-sequence` 四个玩法 tag 各展示最新一条。
 - 每个卡片包含封面、标题、作者、简介、标签、发布时间、游玩次数。
-- 支持搜索、标签筛选。
+- 支持在这四个展示游戏内搜索和标签筛选。
 - 支持进入详情页或直接 Play。
 - 支持点赞、收藏，维护用户态和聚合计数。
-- Seed 后至少 3 个示例游戏，其中包含 Agent 生成游戏。
+- Seed 后至少 3 个示例游戏，其中包含 Agent 生成游戏；历史 published 游戏仍可通过详情/Play URL 访问。
 
 ### Play
 
@@ -285,7 +286,7 @@ E2E 需要先启动 Docker Compose，并安装 Playwright Chromium：
 
 ```bash
 pnpm test:e2e:install-deps
-docker compose up --build
+USE_LOCAL_AGENT_FALLBACK=true docker compose up --build
 pnpm test:e2e
 ```
 
@@ -412,7 +413,7 @@ curl -s -b "$COOKIE" -X POST http://localhost:3000/api/jobs \
 Playwright 覆盖：
 
 - OAuth 未配置时的错误提示。
-- Home 至少 3 个游戏渲染。
+- Home 最多 4 个玩法代表游戏渲染。
 - 搜索与标签筛选。
 - 详情页 artifact 和版本信息。
 - Play 远端 manifest 和 iframe 远端 entry 加载。
@@ -457,15 +458,15 @@ Playwright 覆盖：
 - 点赞/收藏/游玩次数。
 - Play telemetry。
 - 安全扫描和 iframe sandbox。
-- OpenAI-compatible 模型入口和本地 fallback。
+- OpenAI-compatible 模型入口、CodeGen 修复循环和显式本地 fallback。
 - 系统设计、API、数据模型、Agent、产物协议、安全、测试文档。
 - 不少于 3 次清晰 commit 记录。
 
 Mock / fallback：
 
-- 默认使用本地 deterministic Agent fallback，保证无真实模型 key 也能完成端到端验收。
-- OpenAI/DashScope-compatible provider 已实现；配置 `DASHSCOPE_API_KEY` 或 `OPENAI_API_KEY` 并关闭 fallback 后可接真实模型。
-- 本地 fallback 已按 prompt intent 生成不同玩法循环，不再只替换标题、颜色和标签。
+- 默认要求真实 OpenAI/DashScope-compatible provider；无 `DASHSCOPE_API_KEY` 或 `OPENAI_API_KEY` 且 fallback 关闭时，Create/Regenerate 明确失败。
+- 本地 deterministic Agent fallback 只在 `USE_LOCAL_AGENT_FALLBACK=true` 时启用，用于离线 demo、seed 和测试。
+- 本地 fallback 已按 prompt intent 生成不同玩法循环，但不再被视为正式 AI 原创生成能力。
 - OAuth GitHub/Google 代码路径已实现，但仓库不包含 provider client secret；需要部署环境注入。
 - 成本为估算值，不是 provider billing export。
 

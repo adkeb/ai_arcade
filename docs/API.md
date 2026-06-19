@@ -112,4 +112,4 @@ The `Account` table supports `credentials`, `google`, and `github` providers via
 
 ## Model Provider
 
-The Agent package can use a deterministic local fallback or an OpenAI-compatible provider. Configure `OPENAI_API_KEY` or `DASHSCOPE_API_KEY`; the default compatible endpoint is the internal DashScope-style base URL with model `qwen3.7-plus`. Keep `USE_LOCAL_AGENT_FALLBACK=true` for offline demos, and do not commit real keys. `pnpm test:external` runs a small provider smoke call when credentials are present and otherwise reports a skip.
+The Agent package requires an OpenAI-compatible provider for real Create/Regenerate runs. Configure `OPENAI_API_KEY` or `DASHSCOPE_API_KEY`; the default compatible endpoint is the internal DashScope-style base URL with model `qwen3.7-plus`. Set `USE_LOCAL_AGENT_FALLBACK=true` only for offline demos, seed data, and tests, and do not commit real keys. `pnpm test:external` runs a small provider smoke call when credentials are present and otherwise reports a skip.
