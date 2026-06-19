@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["apps/web/*"],
+      "@ai-arcade/agent": ["packages/agent/src"],
+      "@ai-arcade/agent/*": ["packages/agent/src/*"],
+      "@ai-arcade/db": ["packages/db/src/client.ts"],
+      "@ai-arcade/shared": ["packages/shared/src"],
+      "@ai-arcade/shared/*": ["packages/shared/src/*"],
+      "@ai-arcade/storage": ["packages/storage/src"],
+      "@ai-arcade/storage/*": ["packages/storage/src/*"]
+    }
+  }
+}

@@ -83,6 +83,12 @@ All successful responses use `{ "ok": true, "data": ... }`. Errors use `{ "ok": 
   - Auth required and author-only.
   - Sets `Game.currentVersionId` to a succeeded historical version.
 
+- `POST /api/games/{gameId}/regenerate`
+  - Auth required and author-only.
+  - Request: `{ prompt: string }`.
+  - Creates a new `GenerationJob` tied to the existing `gameId`, embeds the current title/description/tags/version as generation context, and enqueues the same Agent workflow.
+  - The packager writes the next `GameVersion.versionNumber`, and PublishAgent keeps the same `Game` while switching `currentVersionId` to the new version after success.
+
 - `POST /api/games/{gameId}/like`
   - Auth required.
   - Toggles the current user's like and refreshes `Game.likeCount`.
@@ -102,8 +108,8 @@ All successful responses use `{ "ok": true, "data": ... }`. Errors use `{ "ok": 
 
 ## OAuth Extension Design
 
-The `Account` table supports `credentials`, `google`, and `github` providers via `(provider, providerAccountId)`. The implemented OAuth callback validates provider `state`, fetches a verified email profile, binds to an existing `User` by email or creates a new user, and creates the same `Session` record used by credentials auth. Provider tokens are not persisted in this MVP.
+The `Account` table supports `credentials`, `google`, and `github` providers via `(provider, providerAccountId)`. The implemented OAuth callback validates provider `state`, fetches a verified email profile, binds to an existing `User` by email or creates a new user, and creates the same `Session` record used by credentials auth. Provider access/refresh tokens are encrypted with AES-256-GCM using a key derived from `SESSION_SECRET` before they are stored.
 
 ## Model Provider
 
-The Agent package can use a deterministic local fallback or an OpenAI-compatible provider. Configure `OPENAI_API_KEY` or `DASHSCOPE_API_KEY`; the default compatible endpoint is the internal DashScope-style base URL with model `qwen3.7-plus`. Keep `USE_LOCAL_AGENT_FALLBACK=true` for offline demos, and do not commit real keys.
+The Agent package can use a deterministic local fallback or an OpenAI-compatible provider. Configure `OPENAI_API_KEY` or `DASHSCOPE_API_KEY`; the default compatible endpoint is the internal DashScope-style base URL with model `qwen3.7-plus`. Keep `USE_LOCAL_AGENT_FALLBACK=true` for offline demos, and do not commit real keys. `pnpm test:external` runs a small provider smoke call when credentials are present and otherwise reports a skip.

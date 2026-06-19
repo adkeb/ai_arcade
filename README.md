@@ -18,15 +18,17 @@ git log --oneline --decorate --max-count=8
 git status --short --branch
 ```
 
-当前主要提交历史：
+当前主要提交主题：
 
 ```bash
-ccc31b2 fix: address post-review QA findings
-ea69af5 docs: rewrite README as Chinese delivery report
-380a441 test: add verification suite and delivery documentation
-d49b2c0 feat: build web flows for discovery creation and play
-55b9b56 feat: implement backend APIs and agent pipeline
-db3a7cb chore: scaffold AI Arcade platform foundation
+feat: build web flows for discovery creation and play
+feat: analyze uploaded assets with DocMind
+feat: call LLM from code generation agent
+fix: persist encrypted OAuth provider tokens
+fix: harden generated game sandboxing
+feat: add author editing and version rollback
+feat: regenerate game versions from author controls
+test: cover model, asset, OAuth, safety, and external smoke paths
 ```
 
 分段说明：
@@ -134,9 +136,11 @@ S3_PUBLIC_ENDPOINT=http://localhost:9002
 - `USE_LOCAL_AGENT_FALLBACK`：默认 `true`，无真实 key 时使用确定性本地 Agent fallback；设为 `false` 且配置 key 后，Intent/GameDesign/CodeGen 会优先调用 OpenAI-compatible 模型。
 - `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`：可选，阿里云 DocMind 文档解析 SDK 凭据。
 - `DOCMIND_ENDPOINT`：DocMind endpoint，默认 `docmind-api.cn-hangzhou.aliyuncs.com`。
+- `DOCMIND_ACCESS_KEY_ID` / `DOCMIND_ACCESS_KEY_SECRET`：可选，DocMind 专用 AK/SK；未设置时回退到 `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`。
 - `DOCMIND_REGION_ID`：DocMind region，默认 `cn-hangzhou`。
 - `DOCMIND_LLM_ENHANCEMENT` / `DOCMIND_ENHANCEMENT_MODE`：是否启用 DocMind 大模型增强与 VLM 模式。
 - `DOCMIND_POLL_ATTEMPTS` / `DOCMIND_POLL_INTERVAL_MS`：DocMind 异步任务轮询配置。
+- `RUN_EXTERNAL_SMOKE`：默认 `false`；设为非 `false` 且配置真实凭据后，`pnpm test:external` 会调用真实 LLM/DocMind/OAuth 配置 smoke。
 
 启用内部 OpenAI-compatible 模型示例：
 
@@ -157,8 +161,9 @@ docker compose up --build web worker
 - 模型服务：OpenAI-compatible provider，可接 DashScope 内部 endpoint；Intent Planner、Game Design、Code Gen 均支持远程 JSON 调用，默认本地 deterministic fallback 便于离线验收。
 - Local fallback：根据 prompt 分流到躲避收集、记忆配对、横版跑酷、花园序列等不同玩法模板。
 - 安全隔离：Play iframe sandbox + no-referrer + feature policy deny-list，生成代码安全扫描，CSP 禁止内联脚本/样式、外部网络、表单、嵌入对象、cookie/storage、`eval` 等能力。
+- 安全审查：SafetyReview 使用正则 + TypeScript AST 扫描，拦截无界循环、字符串定时器、高频定时器、危险构造器和敏感浏览器属性访问。
 - 部署方式：Docker Compose 启动 web、worker、postgres、redis、minio、minio-init。
-- 测试：TypeScript、ESLint、Next production build、Playwright E2E。
+- 测试：TypeScript、ESLint、Next production build、Node test unit/integration/external smoke、Playwright E2E。
 
 ## 7. 系统架构
 
@@ -252,11 +257,41 @@ flowchart LR
 - 生成任务历史。
 - Remix：从历史任务恢复 prompt 和素材。
 - 版本管理：`GameVersion` 持久化、详情页展示、作者编辑 meta、作者回滚当前版本。
+- 版本再生成：作者可在详情页基于现有游戏上下文提交新 prompt，生成链路会发布下一版 `GameVersion`。
+- 版本比较：详情页展示每个版本相对上一版的新增、变更、删除文件 hash 差异。
 - 成本估算：根据 prompt、素材大小、输出代码体量估算。
 - 安全审查：扫描危险浏览器能力。
 - 产物地址展示与 Preview/Publish。
 
-## 9. 核心接口摘要
+## 9. 验证命令
+
+常规本地验证：
+
+```bash
+pnpm typecheck
+pnpm lint
+pnpm --filter @ai-arcade/web build
+pnpm test:unit
+pnpm test:external
+```
+
+有本地 PostgreSQL 时运行 OAuth token 加密集成测试：
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5433/ai_arcade SESSION_SECRET=test-secret pnpm test:integration
+```
+
+E2E 需要先启动 Docker Compose，并安装 Playwright Chromium：
+
+```bash
+pnpm test:e2e:install-deps
+docker compose up --build
+pnpm test:e2e
+```
+
+本地没有第三方凭据时，`pnpm test:external` 会明确跳过 LLM、DocMind、GitHub OAuth、Google OAuth 的真实外部调用；配置凭据后会自动执行可自动化的 smoke。完整 OAuth 授权仍需要交互式浏览器账号。
+
+## 10. 核心接口摘要
 
 - `POST /api/auth/register`：邮箱注册。
 - `POST /api/auth/login`：邮箱登录。
@@ -275,11 +310,12 @@ flowchart LR
 - `POST /api/games/{gameId}/publish`：发布草稿。
 - `GET /api/games/{gameId}/manifest`：Play manifest。
 - `POST /api/games/{gameId}/versions/{versionId}/rollback`：作者恢复历史版本为当前版本。
+- `POST /api/games/{gameId}/regenerate`：作者基于当前游戏上下文生成下一版。
 - `POST /api/games/{gameId}/like`：点赞/取消点赞。
 - `POST /api/games/{gameId}/favorite`：收藏/取消收藏。
 - `POST /api/telemetry/play`：游玩埋点。
 
-## 10. 远端产物协议
+## 11. 远端产物协议
 
 生成产物上传到 MinIO：
 
@@ -303,7 +339,7 @@ game-artifacts/
 
 Play 页面不会运行本地写死组件，而是通过数据库中的 `manifestUrl` 拉取远端 manifest，再加载远端 `index.html`。
 
-## 11. 安全设计
+## 12. 安全设计
 
 已实现：
 
@@ -312,7 +348,7 @@ Play 页面不会运行本地写死组件，而是通过数据库中的 `manifes
 - Create/API 需要登录。
 - Job、Asset、Draft 只允许 owner 访问。
 - 上传类型和大小限制。
-- 生成代码安全扫描，阻断 `eval`、`new Function`、cookie、storage、外部脚本、外部 fetch、WebSocket、设备 API、`window.top` 等。
+- 生成代码安全扫描，阻断 `eval`、`new Function`、cookie、storage、外部脚本、外部 fetch、WebSocket、设备 API、`window.top`、无界循环和高频定时器等。
 - Safety Review 阻断时，`GenerationJob` 和对应 `SafetyReviewAgent` 日志都会标记为 `failed`，便于排障。
 - Play 使用 iframe sandbox，默认不允许 same-origin。
 - `.env.example` 不包含真实密钥，真实 API key 未提交。
@@ -320,10 +356,10 @@ Play 页面不会运行本地写死组件，而是通过数据库中的 `manifes
 生产建议：
 
 - 使用独立 sandbox 子域运行生成游戏。
-- 增加 CSP hash、资源配额、执行超时和更严格的静态分析。
+- 增加 CSP hash、浏览器/容器级资源配额、执行超时和运行时监控。
 - OAuth token 已加密持久化；生产环境继续补 provider refresh token 轮换、撤销和审计。
 
-## 12. 测试与验证证据
+## 13. 测试与验证证据
 
 已执行自动化检查：
 
@@ -331,6 +367,9 @@ Play 页面不会运行本地写死组件，而是通过数据库中的 `manifes
 pnpm typecheck
 pnpm lint
 pnpm --filter @ai-arcade/web build
+pnpm test:unit
+pnpm test:integration
+pnpm test:external
 docker compose config --quiet
 pnpm test:e2e
 ```
@@ -383,6 +422,7 @@ Playwright 覆盖：
 - Agent logs。
 - 预览。
 - 发布。
+- 作者编辑、版本再生成、版本比较和 rollback。
 - 点赞和收藏。
 
 截图路径：
@@ -396,7 +436,7 @@ Playwright 覆盖：
 
 说明：`test-results` 和 `playwright-report` 已被 `.gitignore` 排除，不提交测试产物。
 
-## 13. 完成度说明
+## 14. 完成度说明
 
 已完成：
 
@@ -413,7 +453,7 @@ Playwright 覆盖：
 - Redis/BullMQ 异步任务。
 - Agent logs、历史、重试、Remix。
 - 发布流程。
-- 版本持久化和展示。
+- 版本持久化、展示、文件 hash 比较、再生成和 rollback。
 - 点赞/收藏/游玩次数。
 - Play telemetry。
 - 安全扫描和 iframe sandbox。
@@ -431,24 +471,24 @@ Mock / fallback：
 
 已知限制：
 
-- 生成游戏 sandbox 仍与主站同域下 iframe 加载对象存储 URL，生产建议迁到独立 sandbox origin。
-- 生成代码安全审查是静态规则扫描，生产需引入更强 AST/沙箱执行/资源限制。
-- 版本管理已持久化，作者可在详情页编辑 meta 并回滚当前版本。
+- 生成游戏仍依赖 iframe 加载对象存储 URL，生产建议迁到独立 sandbox origin。
+- 生成代码安全审查已有静态规则和 AST 扫描，生产仍需补浏览器/容器级 CPU、内存、执行时长限制和运行时监控。
+- 版本管理已支持再生成、比较和 rollback；生产可继续补视觉 diff、分支/fork 和审计记录。
 - OAuth token 已加密持久化；生产环境仍建议补充 provider refresh token 轮换、撤销和审计。
 - 暂无线上部署地址，本交付为本地 Docker Compose Demo。
 
-## 14. 如果再给一周的迭代计划
+## 15. 如果再给一周的迭代计划
 
 1. 部署到云环境，提供公网 Demo URL、独立 sandbox 域名和 HTTPS。
 2. 接入真实 GitHub 或 Google OAuth app，完成第三方登录实测。
 3. 强化 Agent 输出 schema validation、重试策略、prompt injection 防护和模型调用观测。
-4. 增加生成代码 AST 分析、CSP hash、CPU/内存/时间资源限制。
-5. 增加重新生成历史版本、版本差异对比和更细的创作者审计记录。
+4. 增加 CSP hash、CPU/内存/时间资源限制和运行时监控。
+5. 增加视觉版本 diff、分支/fork 工作流和更细的创作者审计记录。
 6. 增加 play session、性能指标、留存指标和可视化后台。
 7. 接入真实模型成本账单，替换估算成本。
 8. 扩展 API integration tests 和 worker failure/retry tests。
 
-## 15. AI 协作记录
+## 16. AI 协作记录
 
 - 使用 Codex 作为主要 AI 编程协作工具。
 - AI 参与需求拆解、系统设计、代码生成、测试补齐、错误定位和文档整理。
@@ -460,13 +500,15 @@ Mock / fallback：
   - 修复 OAuth API route 使用 Next `Link` 导致的额外 OPTIONS 请求。
   - 将 `next lint` 迁移到 ESLint flat config，避免交互式初始化导致 CI 失败。
 
-## 16. 提交与复现检查清单
+## 17. 提交与复现检查清单
 
 ```bash
 git log --oneline --decorate --max-count=8
 pnpm typecheck
 pnpm lint
 pnpm --filter @ai-arcade/web build
+pnpm test:unit
+pnpm test:external
 docker compose up --build
 pnpm test:e2e
 ```

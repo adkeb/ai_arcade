@@ -34,23 +34,29 @@
 - OAuth access/refresh tokens are encrypted at rest on Account records.
 - Generated-game sandboxing was hardened with stricter CSP, broader SafetyReview checks, no-referrer iframe loading, and denied browser feature policy capabilities.
 - Authors can edit game metadata and restore a succeeded historical version from the game detail page.
+- Authors can regenerate a new version from an existing game; the job carries current game/version context and publishes the next `GameVersion`.
+- Game details now show per-version file-hash comparisons against the previous version.
+- Local image/video fallback analysis now extracts richer PNG palette/orientation data and MP4 brand/duration metadata.
+- SafetyReview now includes a TypeScript AST pass for unbounded loops, string timer execution, high-frequency timers, and constructor/property access patterns.
+- Unit, integration, and optional external smoke scripts cover LLM provider calls, asset analysis, OAuth token encryption, SafetyReview, and real-service credential checks.
 
 ## Mock or Fallback
 
 - Local deterministic Agent fallback is the default.
 - OpenAI/DashScope-compatible provider is present but not required for the demo.
 - OAuth requires provider client id/secret configuration before external login can be exercised.
+- DocMind and LLM smoke tests run real external calls only when credentials are available; this local environment has no committed secrets.
 
 ## Known Gaps
 
 - OAuth provider credentials are not included in the repo and must be supplied per environment.
 - Cost tracking is estimated from prompt/assets/generated output rather than provider billing export.
-- Generated games run in an iframe sandbox; production should still isolate them on a dedicated sandbox origin with HTTP-level CSP headers and resource quotas.
+- Generated games run in an iframe sandbox with static and AST scanning; production should still isolate them on a dedicated sandbox origin with HTTP-level CSP headers, CPU/memory quotas, and abuse monitoring.
 
 ## One-Week Iteration Plan
 
 - Add provider-specific OAuth refresh-token rotation, revocation, and audit logging.
-- Add historical version diffing and regenerate-from-version workflows.
+- Add richer visual version diffs and branch/fork authoring workflows.
 - Add model schema validation, provider billing reconciliation, and moderation.
 - Add Play performance metrics and sessionized telemetry.
 - Move games to a dedicated sandbox origin with hash-based CSP.
