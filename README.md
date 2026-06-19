@@ -321,7 +321,7 @@ Play 页面不会运行本地写死组件，而是通过数据库中的 `manifes
 
 - 使用独立 sandbox 子域运行生成游戏。
 - 增加 CSP hash、资源配额、执行超时和更严格的静态分析。
-- OAuth token 如需持久化，应加密保存并定期轮换。
+- OAuth token 已加密持久化；生产环境继续补 provider refresh token 轮换、撤销和审计。
 
 ## 12. 测试与验证证据
 
@@ -443,7 +443,7 @@ Mock / fallback：
 2. 接入真实 GitHub 或 Google OAuth app，完成第三方登录实测。
 3. 强化 Agent 输出 schema validation、重试策略、prompt injection 防护和模型调用观测。
 4. 增加生成代码 AST 分析、CSP hash、CPU/内存/时间资源限制。
-5. 增加作者侧版本 rollback、编辑游戏 meta、重新生成版本。
+5. 增加重新生成历史版本、版本差异对比和更细的创作者审计记录。
 6. 增加 play session、性能指标、留存指标和可视化后台。
 7. 接入真实模型成本账单，替换估算成本。
 8. 扩展 API integration tests 和 worker failure/retry tests。

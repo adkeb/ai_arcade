@@ -28,6 +28,12 @@
 - SafetyReview logs are marked failed when generated code is blocked.
 - Job creation supports prompt-only generation; uploaded assets are optional context for multimodal runs.
 - `.env.example` now uses the host-accessible MinIO public endpoint exposed by Docker Compose.
+- Uploaded assets are analyzed with Aliyun DocMind when credentials are configured, with local text/JSON/PDF/image/video fallback.
+- Asset analysis is persisted on `Asset.analysis` and passed into generation jobs and Agent context.
+- CodeGenAgent can call the OpenAI-compatible provider for strict JSON source files when local fallback is disabled.
+- OAuth access/refresh tokens are encrypted at rest on Account records.
+- Generated-game sandboxing was hardened with stricter CSP, broader SafetyReview checks, no-referrer iframe loading, and denied browser feature policy capabilities.
+- Authors can edit game metadata and restore a succeeded historical version from the game detail page.
 
 ## Mock or Fallback
 
@@ -39,12 +45,12 @@
 
 - OAuth provider credentials are not included in the repo and must be supplied per environment.
 - Cost tracking is estimated from prompt/assets/generated output rather than provider billing export.
-- Generated games run in an iframe sandbox; production should isolate them on a dedicated origin with stricter CSP.
+- Generated games run in an iframe sandbox; production should still isolate them on a dedicated sandbox origin with HTTP-level CSP headers and resource quotas.
 
 ## One-Week Iteration Plan
 
-- Add provider-specific OAuth production hardening and token encryption if refresh-token access is needed.
-- Add author-side game detail editing and version rollback.
+- Add provider-specific OAuth refresh-token rotation, revocation, and audit logging.
+- Add historical version diffing and regenerate-from-version workflows.
 - Add model schema validation, provider billing reconciliation, and moderation.
 - Add Play performance metrics and sessionized telemetry.
 - Move games to a dedicated sandbox origin with hash-based CSP.
