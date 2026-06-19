@@ -5,6 +5,17 @@ import {
 import { designGameFromIntent } from "../local-generator";
 import type { GameDesignSpec, IntentPlan } from "../types";
 
+function normalizeRemoteDesign(
+  remote: GameDesignSpec,
+  intent: IntentPlan,
+): GameDesignSpec {
+  const modeTag = intent.mode ?? "avoid-collect";
+  return {
+    ...remote,
+    tags: Array.from(new Set([modeTag, ...remote.tags, "agent-generated"])),
+  };
+}
+
 export async function runGameDesignAgent(
   prompt: string,
   intent: IntentPlan,
@@ -19,7 +30,7 @@ export async function runGameDesignAgent(
   ]);
 
   if (remote?.title && Array.isArray(remote.tags) && remote.theme)
-    return remote;
+    return normalizeRemoteDesign(remote, intent);
   if (!shouldUseLocalFallback()) {
     throw new Error(
       "真实模型未返回有效 GameDesign JSON，不能执行 AI 原创生成。",

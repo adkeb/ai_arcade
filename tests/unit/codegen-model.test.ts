@@ -301,6 +301,7 @@ test("CodeGenAgent uses an OpenAI-compatible model response when configured", as
     assert.equal(requests.length, 1);
     assert.equal(requests[0]?.authorization, "Bearer test-model-key");
     assert.equal(requests[0]?.body.model, "mock-json-model");
+    assert.equal(requests[0]?.body.enable_thinking, false);
     assert.equal(files.gameJs.includes("mock-llm"), true);
     assert.equal(files.indexHtml.includes("Content-Security-Policy"), true);
     assert.equal(files.styleCss.includes("canvas"), true);

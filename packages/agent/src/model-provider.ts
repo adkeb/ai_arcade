@@ -68,7 +68,7 @@ export async function callOpenAICompatibleJson<T>(
       ...(config.useResponseFormat
         ? { response_format: { type: "json_object" } }
         : {}),
-      ...(config.enableThinking ? { enable_thinking: true } : {}),
+      enable_thinking: config.enableThinking,
     }),
   });
 
