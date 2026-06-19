@@ -1,0 +1,228 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GameStatus {
+  draft
+  published
+  archived
+}
+
+enum GenerationJobStatus {
+  pending
+  running
+  succeeded
+  failed
+}
+
+enum AgentLogStatus {
+  running
+  succeeded
+  failed
+}
+
+enum BuildStatus {
+  pending
+  succeeded
+  failed
+}
+
+model User {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  username     String
+  passwordHash String
+  avatarUrl    String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  accounts     Account[]
+  sessions     Session[]
+  games        Game[]
+  assets       Asset[]
+  jobs         GenerationJob[]
+  playEvents   PlayEvent[]
+  likes        Like[]
+  favorites    Favorite[]
+}
+
+model Account {
+  id                    String   @id @default(cuid())
+  userId                String
+  provider              String
+  providerAccountId     String
+  accessTokenEncrypted  String?
+  refreshTokenEncrypted String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Game {
+  id              String        @id @default(cuid())
+  authorId        String
+  title           String
+  description     String
+  coverUrl        String
+  tags            String[]
+  status          GameStatus    @default(draft)
+  currentVersionId String?      @unique
+  playCount       Int           @default(0)
+  likeCount       Int           @default(0)
+  favoriteCount   Int           @default(0)
+  publishedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  author          User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  currentVersion  GameVersion?  @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+  versions        GameVersion[] @relation("GameVersions")
+  playEvents      PlayEvent[]
+  likes           Like[]
+  favorites       Favorite[]
+
+  @@index([authorId])
+  @@index([status])
+  @@index([publishedAt])
+}
+
+model GameVersion {
+  id               String      @id @default(cuid())
+  gameId           String
+  versionNumber    Int
+  jobId            String?
+  artifactBaseUrl  String
+  manifestUrl      String
+  entryFile        String
+  storageBucket    String
+  storagePrefix    String
+  manifestJson     Json
+  buildStatus      BuildStatus @default(pending)
+  createdAt        DateTime    @default(now())
+  game             Game        @relation("GameVersions", fields: [gameId], references: [id], onDelete: Cascade)
+  currentForGames  Game[]      @relation("CurrentVersion")
+
+  @@unique([gameId, versionNumber])
+  @@index([jobId])
+  @@index([gameId])
+}
+
+model Asset {
+  id           String         @id @default(cuid())
+  userId       String
+  jobId        String?
+  originalName String
+  mimeType     String
+  size         Int
+  bucket       String
+  objectKey    String
+  publicUrl    String
+  sha256       String
+  createdAt    DateTime       @default(now())
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job          GenerationJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([jobId])
+}
+
+model GenerationJob {
+  id            String              @id @default(cuid())
+  userId        String
+  gameId        String?
+  prompt        String
+  inputAssets   Json
+  status        GenerationJobStatus @default(pending)
+  currentStep   String?
+  progress      Int                 @default(0)
+  errorMessage  String?
+  costEstimated Float?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assets        Asset[]
+  logs          AgentLog[]
+
+  @@index([userId])
+  @@index([gameId])
+  @@index([status])
+}
+
+model AgentLog {
+  id            String         @id @default(cuid())
+  jobId         String
+  agentName     String
+  step          String
+  status        AgentLogStatus @default(running)
+  inputSummary  String
+  outputSummary String?
+  rawJson       Json?
+  errorMessage  String?
+  startedAt     DateTime
+  finishedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  job           GenerationJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([agentName])
+}
+
+model PlayEvent {
+  id        String   @id @default(cuid())
+  gameId    String
+  userId    String?
+  eventType String
+  payload   Json
+  createdAt DateTime @default(now())
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([gameId])
+  @@index([userId])
+  @@index([eventType])
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  gameId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId])
+  @@index([gameId])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  gameId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId])
+  @@index([gameId])
+}

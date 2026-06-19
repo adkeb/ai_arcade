@@ -1,0 +1,27 @@
+{
+  "name": "@ai-arcade/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./orchestrator": "./src/orchestrator.ts",
+    "./agents/packager": "./src/agents/packager.ts",
+    "./agents/publisher": "./src/agents/publisher.ts",
+    "./local-generator": "./src/local-generator.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-arcade/db": "workspace:*",
+    "@ai-arcade/shared": "workspace:*",
+    "@ai-arcade/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

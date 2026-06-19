@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "jsx": "preserve",
+    "allowJs": false,
+    "noEmit": true,
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./*"],
+      "@ai-arcade/agent": ["../../packages/agent/src"],
+      "@ai-arcade/agent/*": ["../../packages/agent/src/*"],
+      "@ai-arcade/db": ["../../packages/db/src/client.ts"],
+      "@ai-arcade/shared": ["../../packages/shared/src"],
+      "@ai-arcade/shared/*": ["../../packages/shared/src/*"],
+      "@ai-arcade/storage": ["../../packages/storage/src"],
+      "@ai-arcade/storage/*": ["../../packages/storage/src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
