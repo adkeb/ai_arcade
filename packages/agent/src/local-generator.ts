@@ -25,8 +25,23 @@ function pick<T>(items: T[], seed: number): T {
   return items[seed % items.length] as T;
 }
 
-function inferGameMode(prompt: string): LocalGameMode {
-  const isMemory = hasAny(prompt, [
+function assetContext(assets: AssetSummary[]): string {
+  return assets
+    .map((asset) =>
+      [
+        asset.originalName,
+        asset.analysis?.summary,
+        asset.analysis?.textExcerpt,
+        asset.analysis?.metadata ? JSON.stringify(asset.analysis.metadata) : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    )
+    .join("\n");
+}
+
+function inferGameMode(context: string): LocalGameMode {
+  const isMemory = hasAny(context, [
     "memory",
     "match",
     "matching",
@@ -38,7 +53,7 @@ function inferGameMode(prompt: string): LocalGameMode {
     "翻牌",
     "卡牌",
   ]);
-  const isGarden = hasAny(prompt, [
+  const isGarden = hasAny(context, [
     "garden",
     "flower",
     "bloom",
@@ -48,7 +63,7 @@ function inferGameMode(prompt: string): LocalGameMode {
     "种植",
     "园艺",
   ]);
-  const isRunner = hasAny(prompt, [
+  const isRunner = hasAny(context, [
     "runner",
     "run",
     "dash",
@@ -58,7 +73,7 @@ function inferGameMode(prompt: string): LocalGameMode {
     "奔跑",
     "横版",
   ]);
-  const isPuzzle = hasAny(prompt, [
+  const isPuzzle = hasAny(context, [
     "puzzle",
     "logic",
     "sequence",
@@ -102,8 +117,9 @@ export function planIntentFromPrompt(
   const seed = hashText(
     `${prompt}:${assets.map((asset) => asset.originalName).join("|")}`,
   );
-  const mode = inferGameMode(prompt);
-  const isSpace = hasAny(prompt, [
+  const context = `${prompt}\n${assetContext(assets)}`;
+  const mode = inferGameMode(context);
+  const isSpace = hasAny(context, [
     "space",
     "ship",
     "asteroid",
@@ -112,8 +128,8 @@ export function planIntentFromPrompt(
     "陨石",
     "能量",
   ]);
-  const isCyber = hasAny(prompt, ["cyber", "neon", "赛博", "霓虹"]);
-  const isGarden = hasAny(prompt, [
+  const isCyber = hasAny(context, ["cyber", "neon", "赛博", "霓虹"]);
+  const isGarden = hasAny(context, [
     "garden",
     "flower",
     "bloom",
@@ -123,6 +139,9 @@ export function planIntentFromPrompt(
     "种植",
     "园艺",
   ]);
+  const hasAssetAnalysis = assets.some((asset) =>
+    Boolean(asset.analysis?.summary || asset.analysis?.textExcerpt),
+  );
 
   const genre =
     mode === "memory-match"
@@ -162,32 +181,34 @@ export function planIntentFromPrompt(
       "move within a bounded canvas",
       "avoid fast hazards",
       "collect score items",
-      assets.length > 0
-        ? "reference uploaded material as visual inspiration"
-        : "procedurally vary colors from prompt",
+      hasAssetAnalysis
+        ? "use uploaded asset analysis as theme and entity inspiration"
+        : assets.length > 0
+          ? "reference uploaded material metadata as visual inspiration"
+          : "procedurally vary colors from prompt",
     ],
     "memory-match": [
       "flip hidden cards on a grid",
       "remember symbol positions",
       "match every pair before time expires",
-      assets.length > 0
-        ? "reference uploaded material as card motif inspiration"
+      hasAssetAnalysis
+        ? "turn uploaded asset content into card motifs"
         : "seed card symbols from prompt",
     ],
     runner: [
       "jump through a side-scrolling lane",
       "time jumps around barriers",
       "collect airborne tokens for bonus score",
-      assets.length > 0
-        ? "reference uploaded material as runner scenery inspiration"
+      hasAssetAnalysis
+        ? "use uploaded asset analysis as runner scenery inspiration"
         : "vary obstacle cadence from prompt",
     ],
     "garden-sequence": [
       "watch a highlighted garden pattern",
       "repeat the bloom sequence by clicking beds",
       "grow longer sequences across rounds",
-      assets.length > 0
-        ? "reference uploaded material as planting motif inspiration"
+      hasAssetAnalysis
+        ? "use uploaded asset analysis as planting motif inspiration"
         : "seed bloom order from prompt",
     ],
   };

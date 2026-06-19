@@ -34,7 +34,8 @@ All successful responses use `{ "ok": true, "data": ... }`. Errors use `{ "ok": 
   - Multipart field: `file`.
   - Validates type and `MAX_UPLOAD_MB`.
   - Uploads to `game-assets/uploads/{userId}/{assetId}/{safeFileName}`.
-  - Response: `{ assetId, objectKey, url, originalName, mimeType, size }`.
+  - Runs asset analysis. If DocMind credentials are configured, the upload is parsed with Aliyun Document Mind first; otherwise the API uses local text/PDF/image/video metadata fallback.
+  - Response: `{ assetId, objectKey, url, originalName, mimeType, size, analysis }`.
 
 ## Jobs
 

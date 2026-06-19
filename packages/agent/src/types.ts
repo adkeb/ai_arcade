@@ -1,4 +1,4 @@
-import type { GameManifest } from "@ai-arcade/shared";
+import type { AssetAnalysis, GameManifest } from "@ai-arcade/shared";
 
 export type AssetSummary = {
   id: string;
@@ -6,6 +6,7 @@ export type AssetSummary = {
   mimeType: string;
   size: number;
   publicUrl: string;
+  analysis?: AssetAnalysis | null;
 };
 
 export type IntentPlan = {

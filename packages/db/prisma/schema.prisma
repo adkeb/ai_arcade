@@ -137,6 +137,7 @@ model Asset {
   objectKey    String
   publicUrl    String
   sha256       String
+  analysis     Json?
   createdAt    DateTime       @default(now())
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   job          GenerationJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)

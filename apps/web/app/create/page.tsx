@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import type { AssetAnalysis } from "@ai-arcade/shared";
 import { db } from "@ai-arcade/db";
 import { CreateClient } from "@/components/CreateClient";
 import { getCurrentUser } from "@/lib/auth";
@@ -18,10 +19,22 @@ function normalizeInputAssets(inputAssets: unknown) {
         originalName: String(record.originalName ?? "asset"),
         mimeType: String(record.mimeType ?? "application/octet-stream"),
         size: Number(record.size ?? 0),
-        publicUrl: String(record.publicUrl ?? "")
+        publicUrl: String(record.publicUrl ?? ""),
+        analysis: (record.analysis as AssetAnalysis | undefined) ?? null,
       };
     })
-    .filter((asset): asset is { id: string; originalName: string; mimeType: string; size: number; publicUrl: string } => Boolean(asset));
+    .filter(
+      (
+        asset,
+      ): asset is {
+        id: string;
+        originalName: string;
+        mimeType: string;
+        size: number;
+        publicUrl: string;
+        analysis: AssetAnalysis | null;
+      } => Boolean(asset),
+    );
 }
 
 export default async function CreatePage() {
@@ -31,7 +44,7 @@ export default async function CreatePage() {
   const jobs = await db.generationJob.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: "desc" },
-    take: 8
+    take: 8,
   });
 
   const initialJobs = jobs.map((job) => ({
@@ -45,7 +58,7 @@ export default async function CreatePage() {
     costEstimated: job.costEstimated,
     createdAt: job.createdAt.toISOString(),
     finishedAt: job.finishedAt?.toISOString() ?? null,
-    assets: normalizeInputAssets(job.inputAssets)
+    assets: normalizeInputAssets(job.inputAssets),
   }));
 
   return <CreateClient initialJobs={initialJobs} />;

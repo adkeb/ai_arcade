@@ -57,6 +57,7 @@ export async function POST(request: Request) {
           mimeType: asset.mimeType,
           size: asset.size,
           publicUrl: asset.publicUrl,
+          analysis: asset.analysis,
         })) as Prisma.InputJsonValue,
         status: "pending",
         currentStep: "queued",

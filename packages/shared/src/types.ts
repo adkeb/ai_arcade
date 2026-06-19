@@ -13,6 +13,14 @@ export type ApiFailure = {
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
 
+export type AssetAnalysis = {
+  kind: "text" | "json" | "pdf" | "image" | "video" | "binary";
+  summary: string;
+  textExcerpt?: string;
+  metadata: Record<string, string | number | boolean | null>;
+  warnings?: string[];
+};
+
 export type ArtifactFile = {
   path: string;
   url: string;

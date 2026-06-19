@@ -111,23 +111,27 @@ function readAssetsFromJob(
     mimeType: asset.mimeType,
     size: asset.size,
     publicUrl: asset.publicUrl,
+    analysis: asset.analysis as AssetSummary["analysis"],
   }));
   if (relationAssets.length > 0) return relationAssets;
 
   const inputAssets = Array.isArray(job.inputAssets) ? job.inputAssets : [];
-  return inputAssets
-    .map((asset) => {
-      if (!asset || typeof asset !== "object") return null;
-      const record = asset as Record<string, unknown>;
-      return {
-        id: String(record.id ?? ""),
-        originalName: String(record.originalName ?? "asset"),
-        mimeType: String(record.mimeType ?? "application/octet-stream"),
-        size: Number(record.size ?? 0),
-        publicUrl: String(record.publicUrl ?? ""),
-      };
-    })
-    .filter((asset): asset is AssetSummary => Boolean(asset?.id));
+  const normalizedAssets: AssetSummary[] = [];
+  for (const asset of inputAssets) {
+    if (!asset || typeof asset !== "object") continue;
+    const record = asset as Record<string, unknown>;
+    const id = String(record.id ?? "");
+    if (!id) continue;
+    normalizedAssets.push({
+      id,
+      originalName: String(record.originalName ?? "asset"),
+      mimeType: String(record.mimeType ?? "application/octet-stream"),
+      size: Number(record.size ?? 0),
+      publicUrl: String(record.publicUrl ?? ""),
+      analysis: (record.analysis as AssetSummary["analysis"]) ?? null,
+    });
+  }
+  return normalizedAssets;
 }
 
 function estimateGenerationCost(params: {
@@ -190,7 +194,15 @@ export async function runGenerationJob(
       agentName: "IntentPlannerAgent",
       step: "Parse gameplay intent, theme, controls, entities, and win/loss conditions",
       progress: 12,
-      inputSummary: `Prompt: ${job.prompt.slice(0, 240)}; assets: ${assets.map((asset) => asset.originalName).join(", ") || "none"}`,
+      inputSummary: `Prompt: ${job.prompt.slice(0, 240)}; assets: ${
+        assets
+          .map((asset) =>
+            asset.analysis?.summary
+              ? `${asset.originalName} (${asset.analysis.summary})`
+              : asset.originalName,
+          )
+          .join(", ") || "none"
+      }`,
       execute: () => runIntentPlannerAgent(job.prompt, assets),
     });
 

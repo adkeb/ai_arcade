@@ -132,6 +132,11 @@ S3_PUBLIC_ENDPOINT=http://localhost:9002
 - `OPENAI_ENABLE_THINKING` / `DASHSCOPE_ENABLE_THINKING`：是否启用 thinking 参数。
 - `OPENAI_JSON_RESPONSE_FORMAT`：是否要求 JSON response format。
 - `USE_LOCAL_AGENT_FALLBACK`：默认 `true`，无真实 key 时使用确定性本地 Agent fallback。
+- `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`：可选，阿里云 DocMind 文档解析 SDK 凭据。
+- `DOCMIND_ENDPOINT`：DocMind endpoint，默认 `docmind-api.cn-hangzhou.aliyuncs.com`。
+- `DOCMIND_REGION_ID`：DocMind region，默认 `cn-hangzhou`。
+- `DOCMIND_LLM_ENHANCEMENT` / `DOCMIND_ENHANCEMENT_MODE`：是否启用 DocMind 大模型增强与 VLM 模式。
+- `DOCMIND_POLL_ATTEMPTS` / `DOCMIND_POLL_INTERVAL_MS`：DocMind 异步任务轮询配置。
 
 启用内部 OpenAI-compatible 模型示例：
 
@@ -238,6 +243,7 @@ flowchart LR
 
 - 多模态输入：文本 prompt + 文件/图片/视频/PDF/JSON/文本上传。
 - 可只输入创意 prompt 直接生成；上传素材为可选增强上下文。
+- 上传素材优先调用阿里云 DocMind 文档解析（大模型版），把 Markdown/视频帧/ASR 等解析摘要写入 `Asset.analysis`；无凭据或解析失败时使用本地解析 fallback。
 - BullMQ 异步任务队列。
 - Multi-Agent 生成链路。
 - 任务进度、状态、当前步骤。
@@ -258,7 +264,7 @@ flowchart LR
 - `GET /api/auth/session`：当前 session。
 - `GET /api/auth/oauth/{github|google}/start`：OAuth 授权开始。
 - `GET /api/auth/oauth/{github|google}/callback`：OAuth callback 和账号绑定。
-- `POST /api/assets/upload`：上传多模态素材。
+- `POST /api/assets/upload`：上传多模态素材，并生成 `analysis` 内容摘要。
 - `POST /api/jobs`：创建生成任务，`assetIds` 可选，用于附加当前用户上传的素材上下文。
 - `GET /api/jobs`：任务历史。
 - `GET /api/jobs/{jobId}`：任务状态。

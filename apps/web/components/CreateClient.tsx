@@ -2,8 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Coins, ExternalLink, FileUp, History, Loader2, Play, RefreshCw, Repeat2, Rocket, Send, UploadCloud } from "lucide-react";
-import type { ApiResponse } from "@ai-arcade/shared";
+import {
+  Coins,
+  ExternalLink,
+  FileUp,
+  History,
+  Loader2,
+  Play,
+  RefreshCw,
+  Repeat2,
+  Rocket,
+  Send,
+  UploadCloud,
+} from "lucide-react";
+import type { ApiResponse, AssetAnalysis } from "@ai-arcade/shared";
 import { truncateMiddle } from "@/lib/format";
 
 type UploadedAsset = {
@@ -13,6 +25,7 @@ type UploadedAsset = {
   originalName: string;
   mimeType: string;
   size: number;
+  analysis?: AssetAnalysis | null;
 };
 
 type JobState = {
@@ -47,6 +60,7 @@ type JobHistoryAsset = {
   mimeType: string;
   size: number;
   publicUrl: string;
+  analysis?: AssetAnalysis | null;
 };
 
 type JobHistoryItem = {
@@ -94,8 +108,12 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const canPoll = job?.jobId && (job.status === "pending" || job.status === "running");
-  const progressLabel = useMemo(() => `${job?.progress ?? 0}%`, [job?.progress]);
+  const canPoll =
+    job?.jobId && (job.status === "pending" || job.status === "running");
+  const progressLabel = useMemo(
+    () => `${job?.progress ?? 0}%`,
+    [job?.progress],
+  );
 
   async function uploadSelectedFiles(): Promise<UploadedAsset[]> {
     if (files.length === 0) return assets;
@@ -107,8 +125,8 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
       const result = await readApi<UploadedAsset>(
         await fetch("/api/assets/upload", {
           method: "POST",
-          body: formData
-        })
+          body: formData,
+        }),
       );
       uploaded.push(result);
     }
@@ -120,15 +138,19 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
   }
 
   async function createJob(assetList: UploadedAsset[]) {
-    const result = await readApi<{ jobId: string; status: JobState["status"]; currentStep: string | null }>(
+    const result = await readApi<{
+      jobId: string;
+      status: JobState["status"];
+      currentStep: string | null;
+    }>(
       await fetch("/api/jobs", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           prompt,
-          assetIds: assetList.map((asset) => asset.assetId)
-        })
-      })
+          assetIds: assetList.map((asset) => asset.assetId),
+        }),
+      }),
     );
     setPublished(false);
     setLogs([]);
@@ -150,11 +172,12 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
             originalName: asset.originalName,
             mimeType: asset.mimeType,
             size: asset.size,
-            publicUrl: asset.url
-          }))
+            publicUrl: asset.url,
+            analysis: asset.analysis,
+          })),
         },
-        ...items.filter((item) => item.id !== result.jobId)
-      ].slice(0, 8)
+        ...items.filter((item) => item.id !== result.jobId),
+      ].slice(0, 8),
     );
     setJob({
       jobId: result.jobId,
@@ -165,7 +188,7 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
       gameId: null,
       manifestUrl: null,
       artifactBaseUrl: null,
-      costEstimated: null
+      costEstimated: null,
     });
   }
 
@@ -176,7 +199,9 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
       const assetList = await uploadSelectedFiles();
       await createJob(assetList);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation request failed.");
+      setError(
+        err instanceof Error ? err.message : "Generation request failed.",
+      );
     } finally {
       setLoading(false);
     }
@@ -201,8 +226,8 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
     try {
       await readApi<{ game: unknown }>(
         await fetch(`/api/games/${job.gameId}/publish`, {
-          method: "POST"
-        })
+          method: "POST",
+        }),
       );
       setPublished(true);
     } catch (err) {
@@ -222,8 +247,9 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
         url: asset.publicUrl,
         originalName: asset.originalName,
         mimeType: asset.mimeType,
-        size: asset.size
-      }))
+        size: asset.size,
+        analysis: asset.analysis,
+      })),
     );
     setJob(null);
     setLogs([]);
@@ -246,10 +272,10 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
               errorMessage: job.errorMessage,
               gameId: job.gameId,
               costEstimated: job.costEstimated,
-              finishedAt: job.finishedAt ?? item.finishedAt
+              finishedAt: job.finishedAt ?? item.finishedAt,
             }
-          : item
-      )
+          : item,
+      ),
     );
   }, [job]);
 
@@ -259,7 +285,9 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
       try {
         const [jobData, logData] = await Promise.all([
           readApi<JobState>(await fetch(`/api/jobs/${job.jobId}`)),
-          readApi<{ logs: AgentLog[] }>(await fetch(`/api/jobs/${job.jobId}/logs`))
+          readApi<{ logs: AgentLog[] }>(
+            await fetch(`/api/jobs/${job.jobId}/logs`),
+          ),
         ]);
         setJob(jobData);
         setLogs(logData.logs);
@@ -276,7 +304,9 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
     async function refreshOnce() {
       const [jobData, logData] = await Promise.all([
         readApi<JobState>(await fetch(`/api/jobs/${activeJobId}`)),
-        readApi<{ logs: AgentLog[] }>(await fetch(`/api/jobs/${activeJobId}/logs`))
+        readApi<{ logs: AgentLog[] }>(
+          await fetch(`/api/jobs/${activeJobId}/logs`),
+        ),
       ]);
       setJob(jobData);
       setLogs(logData.logs);
@@ -289,12 +319,18 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
       <div className="space-y-5">
         <section className="space-y-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div>
-            <p className="text-sm font-black uppercase tracking-wide text-teal-700">Create</p>
-            <h1 className="mt-1 text-3xl font-black text-slate-950">Generate a playable HTML5 game</h1>
+            <p className="text-sm font-black uppercase tracking-wide text-teal-700">
+              Create
+            </p>
+            <h1 className="mt-1 text-3xl font-black text-slate-950">
+              Generate a playable HTML5 game
+            </h1>
           </div>
 
           <label className="block space-y-2">
-            <span className="text-sm font-bold text-slate-700">Creative prompt</span>
+            <span className="text-sm font-bold text-slate-700">
+              Creative prompt
+            </span>
             <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
@@ -302,80 +338,102 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
             />
           </label>
 
-        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="flex items-center gap-2 font-bold text-slate-900">
-                <UploadCloud size={18} aria-hidden="true" />
-                Multimodal asset
-              </p>
-              <p className="mt-1 text-sm text-slate-600">Optional images, videos, PDFs, JSON, and text files up to the configured limit.</p>
-            </div>
-            <button
-              type="button"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-100"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Select files
-            </button>
-          </div>
-          <input
-            ref={fileInputRef}
-            hidden
-            multiple
-            type="file"
-            accept="image/*,video/*,.txt,.md,.json,.pdf"
-            onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
-          />
-          <div className="mt-3 space-y-2">
-            {files.map((file) => (
-              <div key={`${file.name}-${file.size}`} className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm text-slate-700">
-                <FileUp size={15} aria-hidden="true" />
-                <span className="truncate">{file.name}</span>
-                <span className="ml-auto text-xs text-slate-500">{Math.ceil(file.size / 1024)} KB</span>
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-2 font-bold text-slate-900">
+                  <UploadCloud size={18} aria-hidden="true" />
+                  Multimodal asset
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Optional images, videos, PDFs, JSON, and text files up to the
+                  configured limit.
+                </p>
               </div>
-            ))}
-            {assets.map((asset) => (
-              <a
-                key={asset.assetId}
-                className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
-                href={asset.url}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-100"
+                onClick={() => fileInputRef.current?.click()}
               >
-                <FileUp size={15} aria-hidden="true" />
-                <span className="truncate">{asset.originalName}</span>
-                <ExternalLink className="ml-auto" size={14} aria-hidden="true" />
-              </a>
-            ))}
+                Select files
+              </button>
+            </div>
+            <input
+              ref={fileInputRef}
+              hidden
+              multiple
+              type="file"
+              accept="image/*,video/*,.txt,.md,.json,.pdf"
+              onChange={(event) =>
+                setFiles(Array.from(event.target.files ?? []))
+              }
+            />
+            <div className="mt-3 space-y-2">
+              {files.map((file) => (
+                <div
+                  key={`${file.name}-${file.size}`}
+                  className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm text-slate-700"
+                >
+                  <FileUp size={15} aria-hidden="true" />
+                  <span className="truncate">{file.name}</span>
+                  <span className="ml-auto text-xs text-slate-500">
+                    {Math.ceil(file.size / 1024)} KB
+                  </span>
+                </div>
+              ))}
+              {assets.map((asset) => (
+                <a
+                  key={asset.assetId}
+                  className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+                  href={asset.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <FileUp size={15} aria-hidden="true" />
+                  <span className="truncate">{asset.originalName}</span>
+                  <ExternalLink
+                    className="ml-auto"
+                    size={14}
+                    aria-hidden="true"
+                  />
+                </a>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+          {error ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              {error}
+            </p>
+          ) : null}
 
-        <div className="flex flex-wrap gap-3">
-          <button
-            disabled={loading}
-            type="button"
-            onClick={handleGenerate}
-            className="flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-3 font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {loading ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-            Generate
-          </button>
-          {job?.status === "failed" ? (
+          <div className="flex flex-wrap gap-3">
             <button
               disabled={loading}
               type="button"
-              onClick={retry}
-              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 font-bold text-slate-800 hover:bg-slate-50"
+              onClick={handleGenerate}
+              className="flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-3 font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              <RefreshCw size={18} />
-              Retry
+              {loading ? (
+                <Loader2 className="animate-spin" size={18} />
+              ) : (
+                <Send size={18} />
+              )}
+              Generate
             </button>
-          ) : null}
-        </div>
-      </section>
+            {job?.status === "failed" ? (
+              <button
+                disabled={loading}
+                type="button"
+                onClick={retry}
+                className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 font-bold text-slate-800 hover:bg-slate-50"
+              >
+                <RefreshCw size={18} />
+                Retry
+              </button>
+            ) : null}
+          </div>
+        </section>
 
         <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
@@ -384,23 +442,39 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
                 <History size={16} aria-hidden="true" />
                 Job history
               </p>
-              <h2 className="mt-1 text-xl font-black text-slate-950">Recent generations</h2>
+              <h2 className="mt-1 text-xl font-black text-slate-950">
+                Recent generations
+              </h2>
             </div>
-            <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-black text-slate-700">{history.length}</span>
+            <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-black text-slate-700">
+              {history.length}
+            </span>
           </div>
 
           {history.length === 0 ? (
-            <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">Generated jobs, retries, costs, and Remix shortcuts will appear here.</p>
+            <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+              Generated jobs, retries, costs, and Remix shortcuts will appear
+              here.
+            </p>
           ) : (
             <div className="space-y-3">
               {history.map((item) => (
-                <article key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <article
+                  key={item.id}
+                  className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{item.prompt}</p>
+                      <p className="line-clamp-2 text-sm font-semibold leading-5 text-slate-800">
+                        {item.prompt}
+                      </p>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
-                        <span className="rounded-md bg-white px-2 py-1">{item.status}</span>
-                        <span className="rounded-md bg-white px-2 py-1">{item.progress}%</span>
+                        <span className="rounded-md bg-white px-2 py-1">
+                          {item.status}
+                        </span>
+                        <span className="rounded-md bg-white px-2 py-1">
+                          {item.progress}%
+                        </span>
                         <span className="flex items-center gap-1 rounded-md bg-white px-2 py-1">
                           <Coins size={13} aria-hidden="true" />
                           {formatCost(item.costEstimated)}
@@ -419,14 +493,23 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     <span>{item.createdAt.slice(0, 19).replace("T", " ")}</span>
                     {item.currentStep ? <span>{item.currentStep}</span> : null}
-                    {item.assets.length > 0 ? <span>{item.assets.length} assets</span> : null}
+                    {item.assets.length > 0 ? (
+                      <span>{item.assets.length} assets</span>
+                    ) : null}
                     {item.gameId ? (
-                      <Link href={`/games/${item.gameId}`} className="font-bold text-teal-700 hover:text-teal-900">
+                      <Link
+                        href={`/games/${item.gameId}`}
+                        className="font-bold text-teal-700 hover:text-teal-900"
+                      >
                         Details
                       </Link>
                     ) : null}
                   </div>
-                  {item.errorMessage ? <p className="mt-2 text-xs font-bold text-red-700">{item.errorMessage}</p> : null}
+                  {item.errorMessage ? (
+                    <p className="mt-2 text-xs font-bold text-red-700">
+                      {item.errorMessage}
+                    </p>
+                  ) : null}
                 </article>
               ))}
             </div>
@@ -437,42 +520,64 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
       <section className="space-y-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-black uppercase tracking-wide text-amber-700">Generation job</p>
-            <h2 className="mt-1 text-2xl font-black text-slate-950">{job?.currentStep ?? "No job queued"}</h2>
+            <p className="text-sm font-black uppercase tracking-wide text-amber-700">
+              Generation job
+            </p>
+            <h2 className="mt-1 text-2xl font-black text-slate-950">
+              {job?.currentStep ?? "No job queued"}
+            </h2>
           </div>
           {job ? (
-            <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-black text-slate-700">{job.status}</span>
+            <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-black text-slate-700">
+              {job.status}
+            </span>
           ) : null}
         </div>
 
         <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full bg-teal-600 transition-all" style={{ width: progressLabel }} />
+          <div
+            className="h-full bg-teal-600 transition-all"
+            style={{ width: progressLabel }}
+          />
         </div>
 
         {job ? (
           <div className="grid gap-3 text-sm sm:grid-cols-3">
             <div className="rounded-lg bg-slate-50 p-3">
               <p className="font-bold text-slate-500">jobId</p>
-              <p className="mt-1 break-all font-mono text-xs text-slate-800">{job.jobId}</p>
+              <p className="mt-1 break-all font-mono text-xs text-slate-800">
+                {job.jobId}
+              </p>
             </div>
             <div className="rounded-lg bg-slate-50 p-3">
               <p className="font-bold text-slate-500">gameId</p>
-              <p className="mt-1 break-all font-mono text-xs text-slate-800">{job.gameId ?? "Pending"}</p>
+              <p className="mt-1 break-all font-mono text-xs text-slate-800">
+                {job.gameId ?? "Pending"}
+              </p>
             </div>
             <div className="rounded-lg bg-slate-50 p-3">
               <p className="font-bold text-slate-500">cost</p>
-              <p className="mt-1 font-mono text-xs text-slate-800">{formatCost(job.costEstimated)}</p>
+              <p className="mt-1 font-mono text-xs text-slate-800">
+                {formatCost(job.costEstimated)}
+              </p>
             </div>
           </div>
         ) : (
-          <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">Create a task to see pending, running, succeeded, or failed state here.</p>
+          <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+            Create a task to see pending, running, succeeded, or failed state
+            here.
+          </p>
         )}
 
         {job?.manifestUrl ? (
           <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
             <p className="font-black text-emerald-900">Generated artifact</p>
-            <p className="break-all font-mono text-xs text-emerald-900">manifestUrl: {job.manifestUrl}</p>
-            <p className="break-all font-mono text-xs text-emerald-900">artifactBaseUrl: {job.artifactBaseUrl}</p>
+            <p className="break-all font-mono text-xs text-emerald-900">
+              manifestUrl: {job.manifestUrl}
+            </p>
+            <p className="break-all font-mono text-xs text-emerald-900">
+              artifactBaseUrl: {job.artifactBaseUrl}
+            </p>
             <div className="flex flex-wrap gap-2">
               <Link
                 href={`/play/${job.gameId}?preview=1`}
@@ -487,15 +592,25 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
                 onClick={publish}
                 className="flex items-center gap-2 rounded-lg bg-teal-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-70"
               >
-                {publishing ? <Loader2 className="animate-spin" size={16} /> : <Rocket size={16} />}
+                {publishing ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Rocket size={16} />
+                )}
                 {published ? "Published" : "Publish"}
               </button>
               {published ? (
                 <>
-                  <Link className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-bold text-emerald-800" href="/">
+                  <Link
+                    className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-bold text-emerald-800"
+                    href="/"
+                  >
                     View Home
                   </Link>
-                  <Link className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-bold text-emerald-800" href={`/play/${job.gameId}`}>
+                  <Link
+                    className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-bold text-emerald-800"
+                    href={`/play/${job.gameId}`}
+                  >
                     Play now
                   </Link>
                 </>
@@ -505,24 +620,41 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
         ) : null}
 
         {job?.errorMessage ? (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{job.errorMessage}</p>
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+            {job.errorMessage}
+          </p>
         ) : null}
 
         <div className="space-y-3">
           <h3 className="text-lg font-black text-slate-950">Agent logs</h3>
           {logs.length === 0 ? (
-            <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">Logs will appear as each agent writes to the database.</p>
+            <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+              Logs will appear as each agent writes to the database.
+            </p>
           ) : (
             <div className="space-y-3">
               {logs.map((log) => (
-                <article key={log.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <article
+                  key={log.id}
+                  className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-black text-slate-900">{log.agentName}</p>
-                    <span className="rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-600">{log.status}</span>
+                    <span className="rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-600">
+                      {log.status}
+                    </span>
                   </div>
-                  <p className="mt-1 text-sm font-semibold text-slate-700">{log.step}</p>
-                  <p className="mt-2 text-xs leading-5 text-slate-600">{truncateMiddle(log.outputSummary || log.inputSummary, 280)}</p>
-                  {log.errorMessage ? <p className="mt-2 text-xs font-bold text-red-700">{log.errorMessage}</p> : null}
+                  <p className="mt-1 text-sm font-semibold text-slate-700">
+                    {log.step}
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-slate-600">
+                    {truncateMiddle(log.outputSummary || log.inputSummary, 280)}
+                  </p>
+                  {log.errorMessage ? (
+                    <p className="mt-2 text-xs font-bold text-red-700">
+                      {log.errorMessage}
+                    </p>
+                  ) : null}
                 </article>
               ))}
             </div>
