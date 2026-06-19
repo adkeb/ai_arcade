@@ -40,6 +40,9 @@ test("oauth buttons report missing provider configuration", async ({
   await page.goto("/login");
   await page.getByRole("link", { name: "Continue with GitHub" }).click();
   await expect(page).toHaveURL(/oauth_error=/);
+  const redirectedUrl = new URL(page.url());
+  expect(redirectedUrl.hostname).not.toBe("0.0.0.0");
+  expect(redirectedUrl.pathname).toBe("/login");
   await expect(page.getByText(/GITHUB OAuth is not configured/)).toBeVisible();
   await page.screenshot({
     path: path.join(screenshotDir, "auth-oauth.png"),

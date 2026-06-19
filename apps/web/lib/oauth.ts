@@ -82,11 +82,30 @@ export function oauthStateCookie(provider: OAuthProvider) {
   return `ai_arcade_oauth_${provider}_state`;
 }
 
+function requestOrigin(request: Request): string {
+  const forwardedHost =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  if (forwardedHost) {
+    const protocol =
+      request.headers.get("x-forwarded-proto") ??
+      new URL(request.url).protocol.replace(/:$/u, "");
+    return `${protocol}://${forwardedHost}`;
+  }
+  return new URL(request.url).origin;
+}
+
+export function publicAppUrl(request: Request, path: string): URL {
+  const origin = (process.env.APP_URL || requestOrigin(request)).replace(
+    /\/+$/g,
+    "",
+  );
+  return new URL(path, `${origin}/`);
+}
+
 export function getOAuthConfig(
   provider: OAuthProvider,
   request: Request,
 ): OAuthConfig {
-  const origin = process.env.APP_URL || new URL(request.url).origin;
   const clientId =
     provider === "github"
       ? process.env.GITHUB_CLIENT_ID
@@ -106,7 +125,10 @@ export function getOAuthConfig(
     provider,
     clientId,
     clientSecret,
-    redirectUri: `${origin.replace(/\/+$/g, "")}/api/auth/oauth/${provider}/callback`,
+    redirectUri: publicAppUrl(
+      request,
+      `/api/auth/oauth/${provider}/callback`,
+    ).toString(),
   };
 }
 

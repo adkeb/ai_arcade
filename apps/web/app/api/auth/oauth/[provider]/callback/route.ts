@@ -9,6 +9,7 @@ import {
   getOAuthConfig,
   oauthStateCookie,
   parseOAuthProvider,
+  publicAppUrl,
   upsertOAuthUser,
 } from "@/lib/oauth";
 
@@ -19,7 +20,7 @@ type Context = {
 };
 
 function redirectWithError(request: Request, message: string) {
-  const url = new URL("/login", request.url);
+  const url = publicAppUrl(request, "/login");
   url.searchParams.set("oauth_error", message);
   return NextResponse.redirect(url);
 }
@@ -52,7 +53,7 @@ export async function GET(request: Request, context: Context) {
     const user = await upsertOAuthUser(profile, tokens);
     const session = await createUserSession(user.id);
 
-    const response = NextResponse.redirect(new URL("/create", request.url));
+    const response = NextResponse.redirect(publicAppUrl(request, "/create"));
     response.cookies.set(
       SESSION_COOKIE,
       session.token,
