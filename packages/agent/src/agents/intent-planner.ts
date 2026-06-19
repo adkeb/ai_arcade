@@ -1,0 +1,27 @@
+import { callOpenAICompatibleJson } from "../model-provider";
+import { planIntentFromPrompt } from "../local-generator";
+import type { AssetSummary, IntentPlan } from "../types";
+
+export async function runIntentPlannerAgent(prompt: string, assets: AssetSummary[]): Promise<IntentPlan> {
+  const remote = await callOpenAICompatibleJson<IntentPlan>([
+    {
+      role: "system",
+      content:
+        "You are IntentPlannerAgent. Return strict JSON with genre, coreMechanics, artStyle, playerGoal, winCondition, loseCondition, controls, entities, mood, seed."
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        prompt,
+        assets: assets.map((asset) => ({
+          name: asset.originalName,
+          mimeType: asset.mimeType,
+          size: asset.size
+        }))
+      })
+    }
+  ]);
+
+  if (remote?.genre && Array.isArray(remote.coreMechanics)) return remote;
+  return planIntentFromPrompt(prompt, assets);
+}
