@@ -5,7 +5,7 @@ import { runGameDesignAgent } from "./agents/game-design";
 import { runIntentPlannerAgent } from "./agents/intent-planner";
 import { runPublishAgent } from "./agents/publisher";
 import { runSafetyReviewAgent } from "./agents/safety-review";
-import type { AssetSummary, PublishedArtifact } from "./types";
+import type { AssetSummary, GameSourceFiles, PublishedArtifact } from "./types";
 
 function summarize(value: unknown): string {
   if (typeof value === "string") return value.slice(0, 700);
@@ -179,6 +179,38 @@ async function nextVersionForGame(gameId: string | null): Promise<number> {
   return (latest._max.versionNumber ?? 0) + 1;
 }
 
+async function loadRegenerationContext(gameId: string | null) {
+  if (!gameId) return null;
+  const game = await db.game.findUnique({
+    where: { id: gameId },
+    include: {
+      currentVersion: {
+        select: {
+          versionNumber: true,
+          manifestUrl: true,
+          artifactBaseUrl: true,
+        },
+      },
+    },
+  });
+  if (!game) return null;
+  return {
+    gameId: game.id,
+    previousTitle: game.title,
+    previousDescription: game.description,
+    previousTags: game.tags,
+    previousVersion: game.currentVersion?.versionNumber ?? null,
+  };
+}
+
+function sourceFilesOnly(files: GameSourceFiles): GameSourceFiles {
+  return {
+    indexHtml: files.indexHtml,
+    gameJs: files.gameJs,
+    styleCss: files.styleCss,
+  };
+}
+
 export async function runGenerationJob(
   jobId: string,
 ): Promise<PublishedArtifact> {
@@ -198,6 +230,7 @@ export async function runGenerationJob(
     const job = await loadJobContext(jobId);
     const assets = readAssetsFromJob(job);
     const artifactVersion = await nextVersionForGame(job.gameId);
+    const regenerationContext = await loadRegenerationContext(job.gameId);
 
     const intent = await runLoggedStep({
       jobId,
@@ -228,19 +261,28 @@ export async function runGenerationJob(
     const files = await runLoggedStep({
       jobId,
       agentName: "CodeGenAgent",
-      step: "Generate dependency-free HTML5 Canvas runtime files",
+      step: "Generate original dependency-free HTML5 runtime files with model repair loop",
       progress: 48,
-      inputSummary: `${design.title}: ${design.gameplayLoop}`,
-      execute: () => runCodeGenAgent(design, intent),
+      inputSummary: `${design.title}: ${design.gameplayLoop}; assets=${assets.length}; previous=${
+        regenerationContext?.previousTitle ?? "none"
+      }`,
+      execute: () =>
+        runCodeGenAgent({
+          design,
+          intent,
+          assets,
+          regenerationContext,
+        }),
     });
+    const generatedSourceFiles = sourceFilesOnly(files);
 
     const safety = await runLoggedStep({
       jobId,
       agentName: "SafetyReviewAgent",
       step: "Scan generated code for blocked browser capabilities",
       progress: 64,
-      inputSummary: `Files: index.html=${files.indexHtml.length}, game.js=${files.gameJs.length}, style.css=${files.styleCss.length}`,
-      execute: () => runSafetyReviewAgent(files),
+      inputSummary: `Source=${files.source}; Files: index.html=${files.indexHtml.length}, game.js=${files.gameJs.length}, style.css=${files.styleCss.length}`,
+      execute: () => runSafetyReviewAgent(generatedSourceFiles),
       validateResult: (result) =>
         result.passed
           ? null

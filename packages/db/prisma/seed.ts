@@ -11,9 +11,14 @@ import { ensureCoreBuckets } from "@ai-arcade/storage/minio";
 const creatorEmail = "creator@example.com";
 const creatorPassword = "password123";
 
-function manualIntent(seed: number, style: string): IntentPlan {
+function manualIntent(
+  seed: number,
+  style: string,
+  mode: NonNullable<IntentPlan["mode"]>,
+): IntentPlan {
   return {
     genre: "arcade",
+    mode,
     coreMechanics: ["move", "avoid", "collect"],
     artStyle: style,
     playerGoal: "score high while surviving",
@@ -22,18 +27,28 @@ function manualIntent(seed: number, style: string): IntentPlan {
     controls: ["Arrow keys", "WASD", "mouse or touch drag"],
     entities: ["hero", "hazards", "rewards"],
     mood: "quick and readable",
-    seed
+    seed,
   };
 }
 
-async function seedManualGame(userId: string, design: GameDesignSpec, intent: IntentPlan) {
+async function seedManualGame(
+  userId: string,
+  design: GameDesignSpec,
+  intent: IntentPlan,
+) {
   const existing = await db.game.findFirst({
     where: {
       authorId: userId,
-      title: design.title
-    }
+      title: design.title,
+    },
   });
   if (existing) {
+    await db.game.update({
+      where: { id: existing.id },
+      data: {
+        tags: Array.from(new Set([...existing.tags, ...design.tags])),
+      },
+    });
     console.log(`[seed] manual game exists: ${design.title}`);
     return existing.id;
   }
@@ -44,7 +59,7 @@ async function seedManualGame(userId: string, design: GameDesignSpec, intent: In
     userId,
     jobId: null,
     artifact,
-    status: "published"
+    status: "published",
   });
   console.log(`[seed] published manual game: ${design.title}`);
   return published.gameId;
@@ -57,7 +72,7 @@ async function main() {
   const user = await db.user.upsert({
     where: { email: creatorEmail },
     update: {
-      username: "Creator Demo"
+      username: "Creator Demo",
     },
     create: {
       email: creatorEmail,
@@ -66,82 +81,124 @@ async function main() {
       accounts: {
         create: {
           provider: "credentials",
-          providerAccountId: creatorEmail
-        }
-      }
-    }
+          providerAccountId: creatorEmail,
+        },
+      },
+    },
   });
 
   await db.account.upsert({
     where: {
       provider_providerAccountId: {
         provider: "credentials",
-        providerAccountId: creatorEmail
-      }
+        providerAccountId: creatorEmail,
+      },
     },
     update: { userId: user.id },
     create: {
       userId: user.id,
       provider: "credentials",
-      providerAccountId: creatorEmail
-    }
+      providerAccountId: creatorEmail,
+    },
   });
 
   await seedManualGame(
     user.id,
     {
       title: "Pixel Runner",
-      description: "A compact runner where a bright pixel courier dodges blockers and collects charge cells.",
+      description:
+        "A compact runner where a bright pixel courier dodges blockers and collects charge cells.",
       tags: ["runner", "pixel", "manual-seed"],
       coverPrompt: "pixel runner arcade cover",
-      gameplayLoop: "Move through lanes, dodge blockers, collect charge cells, and survive the timer.",
+      gameplayLoop:
+        "Move through lanes, dodge blockers, collect charge cells, and survive the timer.",
       controls: ["Arrow keys", "WASD", "mouse or touch drag"],
       scoring: "Collectibles add points and remaining lives add a bonus.",
       difficulty: "easy",
-      runtimeRequirements: ["HTML5 Canvas", "iframe sandbox", "postMessage telemetry"],
+      runtimeRequirements: [
+        "HTML5 Canvas",
+        "iframe sandbox",
+        "postMessage telemetry",
+      ],
       theme: {
         background: "#16181d",
         primary: "#70e000",
         accent: "#fbbf24",
-        danger: "#f97316"
+        danger: "#f97316",
       },
-      durationSeconds: 30
+      durationSeconds: 30,
     },
-    manualIntent(7001, "crisp arcade pixel art")
+    manualIntent(7001, "crisp arcade pixel art", "runner"),
+  );
+
+  await seedManualGame(
+    user.id,
+    {
+      title: "Pattern Cards",
+      description:
+        "A compact memory matcher where players flip signal cards and clear every pair.",
+      tags: ["memory-match", "memory", "manual-seed"],
+      coverPrompt: "memory match arcade card cover",
+      gameplayLoop:
+        "Reveal two cards at a time, remember symbols, match all pairs, and finish quickly.",
+      controls: ["Mouse", "touch tap"],
+      scoring: "Matches add points and faster clears earn a timer bonus.",
+      difficulty: "easy",
+      runtimeRequirements: [
+        "HTML5 Canvas",
+        "iframe sandbox",
+        "postMessage telemetry",
+      ],
+      theme: {
+        background: "#151927",
+        primary: "#38bdf8",
+        accent: "#facc15",
+        danger: "#fb7185",
+      },
+      durationSeconds: 45,
+    },
+    manualIntent(7409, "bright card matching arcade art", "memory-match"),
   );
 
   await seedManualGame(
     user.id,
     {
       title: "Memory Garden",
-      description: "A gentle garden challenge where players avoid thorns and gather glowing memory blooms.",
-      tags: ["memory", "garden", "manual-seed"],
+      description:
+        "A gentle garden challenge where players avoid thorns and gather glowing memory blooms.",
+      tags: ["garden-sequence", "garden", "manual-seed"],
       coverPrompt: "botanical memory garden arcade cover",
-      gameplayLoop: "Guide the gardener, avoid thorns, collect blooms, and finish with the best memory score.",
+      gameplayLoop:
+        "Guide the gardener, avoid thorns, collect blooms, and finish with the best memory score.",
       controls: ["Arrow keys", "WASD", "mouse or touch drag"],
       scoring: "Blooms add points and collisions remove lives.",
       difficulty: "medium",
-      runtimeRequirements: ["HTML5 Canvas", "iframe sandbox", "postMessage telemetry"],
+      runtimeRequirements: [
+        "HTML5 Canvas",
+        "iframe sandbox",
+        "postMessage telemetry",
+      ],
       theme: {
         background: "#18231f",
         primary: "#9be564",
         accent: "#f6d365",
-        danger: "#f25f5c"
+        danger: "#f25f5c",
       },
-      durationSeconds: 35
+      durationSeconds: 35,
     },
-    manualIntent(8137, "soft botanical pixel art")
+    manualIntent(8137, "soft botanical pixel art", "garden-sequence"),
   );
 
   const generatedExists = await db.game.findFirst({
     where: {
       authorId: user.id,
-      tags: { has: "seed-agent" }
-    }
+      tags: { has: "seed-agent" },
+    },
   });
 
   if (!generatedExists) {
-    const prompt = "做一个太空飞船躲避陨石并收集能量的 30 秒小游戏，像素风格，方向键移动，结束后显示得分。";
+    const prompt =
+      "做一个太空飞船躲避陨石并收集能量的 30 秒小游戏，像素风格，方向键移动，结束后显示得分。";
     const job = await db.generationJob.create({
       data: {
         userId: user.id,
@@ -149,18 +206,28 @@ async function main() {
         inputAssets: [],
         status: "pending",
         currentStep: "seed-created",
-        progress: 0
+        progress: 0,
+      },
+    });
+    const previousFallback = process.env.USE_LOCAL_AGENT_FALLBACK;
+    process.env.USE_LOCAL_AGENT_FALLBACK = "true";
+    const result = await runGenerationJob(job.id).finally(() => {
+      if (previousFallback === undefined) {
+        delete process.env.USE_LOCAL_AGENT_FALLBACK;
+      } else {
+        process.env.USE_LOCAL_AGENT_FALLBACK = previousFallback;
       }
     });
-    const result = await runGenerationJob(job.id);
-    const game = await db.game.findUniqueOrThrow({ where: { id: result.gameId } });
+    const game = await db.game.findUniqueOrThrow({
+      where: { id: result.gameId },
+    });
     await db.game.update({
       where: { id: game.id },
       data: {
         status: "published",
         publishedAt: new Date(),
-        tags: Array.from(new Set([...game.tags, "seed-agent"]))
-      }
+        tags: Array.from(new Set([...game.tags, "seed-agent"])),
+      },
     });
     console.log(`[seed] generated and published agent game: ${result.gameId}`);
   } else {

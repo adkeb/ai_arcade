@@ -1,4 +1,7 @@
-import { callOpenAICompatibleJson } from "../model-provider";
+import {
+  callOpenAICompatibleJson,
+  shouldUseLocalFallback,
+} from "../model-provider";
 import { planIntentFromPrompt } from "../local-generator";
 import type { AssetSummary, IntentPlan } from "../types";
 
@@ -33,5 +36,10 @@ export async function runIntentPlannerAgent(
   ]);
 
   if (remote?.genre && Array.isArray(remote.coreMechanics)) return remote;
+  if (!shouldUseLocalFallback()) {
+    throw new Error(
+      "真实模型未返回有效 IntentPlanner JSON，不能执行 AI 原创生成。",
+    );
+  }
   return planIntentFromPrompt(prompt, assets);
 }
