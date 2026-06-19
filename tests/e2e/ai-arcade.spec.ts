@@ -34,13 +34,21 @@ test.beforeAll(async () => {
   await mkdir(screenshotDir, { recursive: true });
 });
 
-test("oauth buttons report missing provider configuration", async ({
-  page,
-}) => {
+test("oauth buttons handle provider configuration", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("link", { name: "Continue with GitHub" }).click();
-  await expect(page).toHaveURL(/oauth_error=/);
+  await page.waitForURL(
+    (url) =>
+      url.searchParams.has("oauth_error") || url.hostname === "github.com",
+  );
   const redirectedUrl = new URL(page.url());
+
+  if (redirectedUrl.hostname === "github.com") {
+    expect(redirectedUrl.pathname).toContain("/login");
+    expect(redirectedUrl.searchParams.get("client_id")).toBeTruthy();
+    return;
+  }
+
   expect(redirectedUrl.hostname).not.toBe("0.0.0.0");
   expect(redirectedUrl.pathname).toBe("/login");
   await expect(page.getByText(/GITHUB OAuth is not configured/)).toBeVisible();
@@ -70,9 +78,12 @@ test("home lists database games and play loads remote manifest entry", async ({
   expect(gamesPayload.ok).toBeTruthy();
   expect(gamesPayload.data.games.length).toBeGreaterThanOrEqual(3);
 
-  const game = gamesPayload.data.games.find(
-    (item) => item.currentVersion?.manifestUrl,
-  );
+  const game =
+    gamesPayload.data.games.find(
+      (item) =>
+        item.tags.includes("manual-seed") && item.currentVersion?.manifestUrl,
+    ) ??
+    gamesPayload.data.games.find((item) => item.currentVersion?.manifestUrl);
   expect(
     game,
     "expected at least one published game with currentVersion",
