@@ -13,7 +13,7 @@ export const loginSchema = z.object({
 
 export const createJobSchema = z.object({
   prompt: z.string().trim().min(10).max(2000),
-  assetIds: z.array(z.string().min(1)).min(1).max(8),
+  assetIds: z.array(z.string().min(1)).max(8).default([]),
 });
 
 export const telemetrySchema = z.object({

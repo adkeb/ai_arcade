@@ -94,11 +94,6 @@ export async function POST(request: Request) {
         code: "PROMPT_TOO_SHORT",
         message: "Prompt must be between 10 and 2000 characters.",
       },
-      assetIds: {
-        code: "ASSET_REQUIRED",
-        message:
-          "Please upload at least one asset before creating a generation job.",
-      },
     });
     if (validation) return fail(validation.code, validation.message, 400);
 

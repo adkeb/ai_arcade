@@ -98,9 +98,6 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
   const progressLabel = useMemo(() => `${job?.progress ?? 0}%`, [job?.progress]);
 
   async function uploadSelectedFiles(): Promise<UploadedAsset[]> {
-    if (files.length === 0 && assets.length === 0) {
-      throw new Error("Please upload at least one image, video, PDF, JSON, or text asset before generating.");
-    }
     if (files.length === 0) return assets;
 
     const uploaded: UploadedAsset[] = [];
@@ -312,7 +309,7 @@ export function CreateClient({ initialJobs = [] }: CreateClientProps) {
                 <UploadCloud size={18} aria-hidden="true" />
                 Multimodal asset
               </p>
-              <p className="mt-1 text-sm text-slate-600">Images, videos, PDFs, JSON, and text files up to the configured limit.</p>
+              <p className="mt-1 text-sm text-slate-600">Optional images, videos, PDFs, JSON, and text files up to the configured limit.</p>
             </div>
             <button
               type="button"

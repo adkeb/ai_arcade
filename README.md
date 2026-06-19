@@ -237,7 +237,7 @@ flowchart LR
 已完成：
 
 - 多模态输入：文本 prompt + 文件/图片/视频/PDF/JSON/文本上传。
-- API 层要求 `assetIds` 至少包含 1 个已上传素材，与「上传至少一种多模态素材」验收要求一致。
+- 可只输入创意 prompt 直接生成；上传素材为可选增强上下文。
 - BullMQ 异步任务队列。
 - Multi-Agent 生成链路。
 - 任务进度、状态、当前步骤。
@@ -259,7 +259,7 @@ flowchart LR
 - `GET /api/auth/oauth/{github|google}/start`：OAuth 授权开始。
 - `GET /api/auth/oauth/{github|google}/callback`：OAuth callback 和账号绑定。
 - `POST /api/assets/upload`：上传多模态素材。
-- `POST /api/jobs`：创建生成任务，`assetIds` 必须至少包含 1 个当前用户上传的素材。
+- `POST /api/jobs`：创建生成任务，`assetIds` 可选，用于附加当前用户上传的素材上下文。
 - `GET /api/jobs`：任务历史。
 - `GET /api/jobs/{jobId}`：任务状态。
 - `GET /api/jobs/{jobId}/logs`：Agent logs。
@@ -352,7 +352,7 @@ curl -s -b "$COOKIE" -X POST http://localhost:3000/api/jobs \
 - 无效邮箱：`INVALID_EMAIL`
 - 短密码：`PASSWORD_TOO_SHORT`
 - 空 prompt：`PROMPT_TOO_SHORT`
-- 未上传素材创建任务：`ASSET_REQUIRED`
+- 无素材有效 prompt：应创建 `GenerationJob` 并返回 `{ jobId, status, currentStep }`
 - 恶意生成代码触发安全审查：job `failed`，`SafetyReviewAgent` log `failed`
 
 本地 fallback prompt 分流已验证：

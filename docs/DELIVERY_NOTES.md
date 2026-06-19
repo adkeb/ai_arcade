@@ -26,7 +26,7 @@
 - Local Agent fallback now selects separate avoid-and-collect, memory matching, runner, and garden sequence gameplay loops from prompt intent.
 - API validation failures return stable user-facing error codes/messages instead of raw Zod issue JSON.
 - SafetyReview logs are marked failed when generated code is blocked.
-- Job creation requires at least one uploaded asset, matching the Create flow requirement.
+- Job creation supports prompt-only generation; uploaded assets are optional context for multimodal runs.
 - `.env.example` now uses the host-accessible MinIO public endpoint exposed by Docker Compose.
 
 ## Mock or Fallback
